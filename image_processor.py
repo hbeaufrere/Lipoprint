@@ -28,8 +28,11 @@ class GelImageProcessor:
         # Convert to grayscale
         self.gray_image = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
 
-        # Invert: black bands become white (high values)
-        self.inverted = 255 - self.gray_image
+        # Use grayscale directly - invert during profile calculation instead
+        # In gel: white gel = 255 (high), black bands = 0 (low)
+        # We want OD: white (no band) = 0, black (band) = 1
+        # So: OD = 1 - (normalized_pixel) = 1 - (gray/255)
+        self.inverted = self.gray_image
 
     def extract_tubes(self, num_tubes=12, rows=1):
         """
@@ -90,8 +93,9 @@ class GelImageProcessor:
         # Average across the FULL width to get vertical profile
         profile = np.mean(tube_region, axis=1).astype(np.float32)
 
-        # Normalize to 0-1 range (0=white/no band, 1=black/max band)
-        profile = profile / 255.0
+        # Convert to optical density: white (no band) = 0, black (band) = 1
+        # OD = 1 - (normalized_gray) = 1 - (gray_value / 255)
+        profile = 1.0 - (profile / 255.0)
 
         # Auto-crop to relevant region (from white to darkest band)
         if auto_crop:
