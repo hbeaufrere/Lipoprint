@@ -31,10 +31,11 @@ class GelImageProcessor:
         # Invert: black bands become white (high values)
         self.inverted = 255 - self.gray_image
 
-    def extract_tubes(self, num_tubes=12, rows=2):
+    def extract_tubes(self, num_tubes=12, rows=1):
         """
         Extract individual tube regions from the gel image.
-        Assumes tubes are arranged in rows.
+        Default: 12 tubes in 1 row (top row only)
+        Can also do 6x2 layout by passing rows=2
         """
         height, width = self.inverted.shape
 
@@ -42,6 +43,10 @@ class GelImageProcessor:
         tubes_per_row = num_tubes // rows
         tube_width = width // tubes_per_row
         tube_height = height // rows
+
+        # Only use top portion of image (to avoid other rows/content below)
+        # Extract from top of image down
+        max_height_to_use = tube_height * rows
 
         self.tubes = []
         tube_idx = 0
@@ -56,12 +61,15 @@ class GelImageProcessor:
                 x_start = col * tube_width
                 x_end = (col + 1) * tube_width
 
+                # Extract tube region
                 tube_region = self.inverted[y_start:y_end, x_start:x_end]
+
                 self.tubes.append({
                     'index': tube_idx,
                     'region': tube_region,
                     'y_range': (y_start, y_end),
-                    'x_range': (x_start, x_end)
+                    'x_range': (x_start, x_end),
+                    'original_coords': (y_start, y_end, x_start, x_end)
                 })
 
                 tube_idx += 1

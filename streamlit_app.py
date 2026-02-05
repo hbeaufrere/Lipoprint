@@ -63,7 +63,7 @@ def load_and_process_image(uploaded_file):
 
     try:
         processor = GelImageProcessor(tmp_path)
-        processor.extract_tubes(num_tubes=12, rows=2)
+        processor.extract_tubes(num_tubes=12, rows=1)  # 12 tubes in 1 row (top row only)
         st.session_state.processor = processor
         st.session_state.current_tube = 0
         st.session_state.bands_detected = False

@@ -275,7 +275,7 @@ class GelDensitometryApp(QMainWindow):
 
         try:
             self.processor = GelImageProcessor(file_path)
-            self.processor.extract_tubes(num_tubes=12, rows=2)
+            self.processor.extract_tubes(num_tubes=12, rows=1)  # 12 tubes in 1 row
 
             # Populate tube combo box
             self.tube_combo.blockSignals(True)
