@@ -20,10 +20,14 @@ class GelImageProcessor:
         self.load_image()
 
     def load_image(self):
-        """Load image from file."""
+        """Load image from file and crop to top half only."""
         self.image = cv2.imread(self.image_path)
         if self.image is None:
             raise ValueError(f"Could not load image from {self.image_path}")
+
+        # Crop to top half only (remove bottom row of tubes we don't need)
+        height = self.image.shape[0]
+        self.image = self.image[:height//2, :]
 
         # Convert to grayscale
         self.gray_image = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
@@ -39,16 +43,14 @@ class GelImageProcessor:
         AUTO-DETECT and extract white tube rectangles from gel image.
 
         Finds white vertical columns (tubes) by analyzing brightness.
-        Uses first 12 tubes from top row only.
+        Uses first 12 tubes (image already cropped to top half).
+        Crops each tube horizontally to remove black edge backgrounds.
         """
-        height, width = self.gray_image.shape  # Use original gray image
-
-        # Get only top half (first row of tubes)
-        top_half = self.gray_image[:height//2, :]
+        height, width = self.gray_image.shape  # Already cropped to top half
 
         # Find white columns by averaging pixel intensity vertically
         # White tubes have HIGH gray values (close to 255)
-        column_brightness = np.mean(top_half, axis=0)
+        column_brightness = np.mean(self.gray_image, axis=0)
 
         # Threshold to find white regions (tubes are bright, background is dark)
         # White tubes should have average > 150
@@ -70,14 +72,27 @@ class GelImageProcessor:
 
         self.tubes = []
 
-        # Extract first 12 detected tubes from top row
+        # Extract first 12 detected tubes
         for tube_idx in range(min(num_tubes, len(tube_boundaries))):
             x_start, x_end = tube_boundaries[tube_idx]
             y_start = 0
-            y_end = height // 2  # Top row only
+            y_end = height  # Use full height (already cropped to top half)
 
-            # Extract tube region from ORIGINAL image
-            tube_region = self.gray_image[y_start:y_end, x_start:x_end]
+            # Extract tube region - crop horizontally to remove black edges
+            tube_region_full = self.gray_image[y_start:y_end, x_start:x_end]
+
+            # Find white rows (remove black top/bottom edges)
+            row_brightness = np.mean(tube_region_full, axis=1)
+            white_rows = row_brightness > 150
+
+            if np.any(white_rows):
+                # Find first and last white rows
+                white_indices = np.where(white_rows)[0]
+                y_start_white = white_indices[0]
+                y_end_white = white_indices[-1] + 1
+                tube_region = tube_region_full[y_start_white:y_end_white, :]
+            else:
+                tube_region = tube_region_full
 
             self.tubes.append({
                 'index': tube_idx,

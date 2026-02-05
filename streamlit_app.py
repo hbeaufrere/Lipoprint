@@ -309,10 +309,15 @@ def main():
             else:
                 tube_display = tube_region.astype(np.uint8)
 
-            # Create a figure with matplotlib
-            fig_tube = plt.figure(figsize=(4, 6))
+            # Create a figure with correct aspect ratio
+            tube_height, tube_width = tube_display.shape
+            aspect_ratio = tube_width / tube_height if tube_height > 0 else 1
+            fig_height = 8
+            fig_width = max(2, fig_height * aspect_ratio)
+
+            fig_tube = plt.figure(figsize=(fig_width, fig_height))
             ax_tube = fig_tube.add_subplot(111)
-            ax_tube.imshow(tube_display, cmap='gray', aspect='auto')
+            ax_tube.imshow(tube_display, cmap='gray', aspect='equal')  # Keep original aspect ratio
             ax_tube.set_xlabel('Width (pixels)')
             ax_tube.set_ylabel('Depth (pixels) →')
             ax_tube.set_title(f'Tube {st.session_state.current_tube + 1}')
