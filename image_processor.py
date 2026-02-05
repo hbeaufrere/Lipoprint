@@ -36,36 +36,48 @@ class GelImageProcessor:
 
     def extract_tubes(self, num_tubes=12, tubes_per_row=20):
         """
-        Extract individual tube regions from the gel image.
+        AUTO-DETECT and extract white tube rectangles from gel image.
 
-        For 40 tubes (20x2 layout), this extracts first 12 tubes from TOP row only.
-
-        Parameters:
-        - num_tubes: Number of tubes to extract (12)
-        - tubes_per_row: Total tubes per row in image (20)
+        Finds white vertical columns (tubes) by analyzing brightness.
+        Uses first 12 tubes from top row only.
         """
-        height, width = self.inverted.shape
+        height, width = self.gray_image.shape  # Use original gray image
 
-        # Calculate tube dimensions based on actual image layout
-        # Image has 40 tubes total: 20 wide (per row) x 2 tall (2 rows)
-        tube_width = width // tubes_per_row
-        tube_height = height // 2  # Only use top half (first row of 20 tubes)
+        # Get only top half (first row of tubes)
+        top_half = self.gray_image[:height//2, :]
+
+        # Find white columns by averaging pixel intensity vertically
+        # White tubes have HIGH gray values (close to 255)
+        column_brightness = np.mean(top_half, axis=0)
+
+        # Threshold to find white regions (tubes are bright, background is dark)
+        # White tubes should have average > 150
+        is_white = column_brightness > 150
+
+        # Find boundaries of white regions (tube starts and ends)
+        transitions = np.diff(is_white.astype(int))
+        starts = np.where(transitions == 1)[0] + 1  # Where white begins
+        ends = np.where(transitions == -1)[0]        # Where white ends
+
+        # Match starts and ends to get tube boundaries
+        if len(starts) > 0 and len(ends) > 0:
+            if starts[0] > ends[0]:
+                ends = ends[1:]
+            if len(ends) > len(starts):
+                ends = ends[:len(starts)]
+
+        tube_boundaries = list(zip(starts[:len(ends)], ends[:len(starts)]))
 
         self.tubes = []
-        tube_idx = 0
 
-        # Extract only from TOP row, first 12 tubes
-        for col in range(tubes_per_row):
-            if tube_idx >= num_tubes:
-                break
+        # Extract first 12 detected tubes from top row
+        for tube_idx in range(min(num_tubes, len(tube_boundaries))):
+            x_start, x_end = tube_boundaries[tube_idx]
+            y_start = 0
+            y_end = height // 2  # Top row only
 
-            y_start = 0  # Start at top of image
-            y_end = tube_height  # End at midpoint (first row)
-            x_start = col * tube_width
-            x_end = (col + 1) * tube_width
-
-            # Extract tube region
-            tube_region = self.inverted[y_start:y_end, x_start:x_end]
+            # Extract tube region from ORIGINAL image
+            tube_region = self.gray_image[y_start:y_end, x_start:x_end]
 
             self.tubes.append({
                 'index': tube_idx,
@@ -74,8 +86,6 @@ class GelImageProcessor:
                 'x_range': (x_start, x_end),
                 'original_coords': (y_start, y_end, x_start, x_end)
             })
-
-            tube_idx += 1
 
         return self.tubes
 
