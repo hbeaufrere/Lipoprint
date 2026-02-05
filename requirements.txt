@@ -6,3 +6,5 @@ opencv-python==4.8.0.76
 Pillow==10.0.0
 matplotlib==3.7.2
 scikit-image==0.21.0
+streamlit==1.28.0
+plotly==5.17.0
