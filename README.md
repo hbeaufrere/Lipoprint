@@ -12,25 +12,35 @@ A specialized image analysis application for quantitative analysis of gel electr
 - **Quantitative Analysis**: Calculate area under curve (AUC) and percentage composition for each band
 - **Color-Coded Visualization**: Different colors for each band in the graph
 
-## Installation
+## Installation & Usage
 
-1. Create a virtual environment:
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
+### Option 1: Web App (Streamlit) - Recommended ⭐
 
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+The web app works in any browser and is easier to deploy.
 
-## Usage
+```bash
+# Install dependencies
+pip install -r requirements.txt
 
-1. Run the application:
-   ```bash
-   python main.py
-   ```
+# Run web app
+streamlit run streamlit_app.py
+```
+
+Access at: http://localhost:8501
+
+**Deploy to cloud**: See STREAMLIT_QUICKSTART.md for 1-click deployment to Streamlit Cloud (FREE!)
+
+### Option 2: Desktop App (PyQt6) - Local Only
+
+The desktop app provides enhanced interactivity with drag-and-drop cutoff adjustment.
+
+```bash
+# Install dependencies (desktop version with PyQt6)
+pip install -r requirements-desktop.txt
+
+# Run desktop app
+python main.py
+```
 
 2. Click "Load TIF Image" to select your gel electrophoresis image
    - Images should have: black background, white gels, black bands
@@ -73,12 +83,19 @@ A specialized image analysis application for quantitative analysis of gel electr
 ## Technical Details
 
 ### Dependencies
-- **PyQt6**: GUI framework
+
+**Web App (requirements.txt):**
+- **Streamlit**: Web framework
+- **Plotly**: Interactive graphs
 - **NumPy/SciPy**: Numerical analysis and signal processing
 - **OpenCV**: Image processing
 - **Pillow**: Image I/O
 - **Matplotlib**: Graph visualization
 - **scikit-image**: Additional image processing utilities
+
+**Desktop App (requirements-desktop.txt):**
+- **PyQt6**: GUI framework
+- Plus all dependencies above except Streamlit/Plotly
 
 ### Algorithm Parameters
 - Peak prominence threshold: 0.05 (optical density units)

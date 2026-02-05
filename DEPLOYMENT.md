@@ -1,5 +1,13 @@
 # Deployment Guide - Gel Densitometry Analysis
 
+## Important: Requirements Files
+
+- **`requirements.txt`** - For Streamlit Cloud (web app) - NO PyQt6
+- **`requirements-desktop.txt`** - For local desktop app with PyQt6
+- **`requirements-streamlit.txt`** - Alternative Streamlit requirements (for reference)
+
+Streamlit Cloud automatically uses `requirements.txt`, which is optimized for the web environment.
+
 ## Quick Start: Deploy to Streamlit Cloud (Free)
 
 ### Option 1: Streamlit Cloud (Recommended - Fastest)
@@ -252,6 +260,12 @@ App auto-reloads within 1 minute.
 - Check logs: Settings → Logs
 - Clear cache: Settings → Clear Cache
 - Redeploy: Click "Rerun"
+
+### Issue: "Installer returned a non-zero exit code" or PyQt6 errors
+- **Cause**: PyQt6 requires system dependencies not available on Streamlit Cloud
+- **Solution**: We've already fixed this! `requirements.txt` has PyQt6 removed
+- If you see this: Delete the app and redeploy (it will use the new requirements.txt)
+- For desktop use: Install with `requirements-desktop.txt` instead
 
 ### Issue: "Module not found"
 - Ensure all imports in `streamlit_app.py` are in `requirements.txt`
