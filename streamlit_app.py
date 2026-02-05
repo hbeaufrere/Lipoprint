@@ -303,11 +303,17 @@ def main():
             tube_info = processor.tubes[st.session_state.current_tube]
             tube_region = tube_info['region']
 
+            # Extract CENTER portion only (matches the analysis)
+            height, width = tube_region.shape
+            center_start = width // 5
+            center_end = 4 * width // 5
+            tube_center = tube_region[:, center_start:center_end]
+
             # Convert to 8-bit image for display
-            if np.max(tube_region) > 0:
-                tube_display = np.clip((tube_region / np.max(tube_region)) * 255, 0, 255).astype(np.uint8)
+            if np.max(tube_center) > 0:
+                tube_display = np.clip((tube_center / np.max(tube_center)) * 255, 0, 255).astype(np.uint8)
             else:
-                tube_display = tube_region.astype(np.uint8)
+                tube_display = tube_center.astype(np.uint8)
 
             # Create a figure with matplotlib
             fig_tube = plt.figure(figsize=(4, 6))
@@ -315,7 +321,7 @@ def main():
             ax_tube.imshow(tube_display, cmap='gray', aspect='auto')
             ax_tube.set_xlabel('Width (pixels)')
             ax_tube.set_ylabel('Depth (pixels) →')
-            ax_tube.set_title(f'Tube {st.session_state.current_tube + 1}')
+            ax_tube.set_title(f'Tube {st.session_state.current_tube + 1} (Center)')
 
             st.pyplot(fig_tube, use_container_width=True)
             plt.close(fig_tube)

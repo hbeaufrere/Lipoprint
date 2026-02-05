@@ -87,8 +87,15 @@ class GelImageProcessor:
 
         tube_region = self.tubes[tube_index]['region']
 
-        # Average across the width to get vertical profile
-        profile = np.mean(tube_region, axis=1).astype(np.float32)
+        # Extract only the CENTER portion of the tube region to avoid averaging multiple tubes
+        # Use the middle 60% of the width to focus on a single tube
+        height, width = tube_region.shape
+        center_start = width // 5  # Start at 20% from left
+        center_end = 4 * width // 5  # End at 80% from left
+        tube_center = tube_region[:, center_start:center_end]
+
+        # Average across the center width only to get vertical profile
+        profile = np.mean(tube_center, axis=1).astype(np.float32)
 
         # Normalize to 0-1 range (0=white/no band, 1=black/max band)
         profile = profile / 255.0
