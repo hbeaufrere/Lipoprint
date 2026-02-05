@@ -101,23 +101,24 @@ class GelImageProcessor:
         Returns cropped profile and crop indices.
         """
         # Find regions with actual signal (not pure white/background)
-        threshold = 0.15  # Consider pixels above this as potential band regions
+        # Threshold: anything darker than pure white
+        threshold = 0.95  # Only consider pixels darker than this as background (pure white is 1.0)
 
-        # Find where signal starts (first band region)
-        signal_mask = profile > threshold
+        # Find where signal (darker pixels) starts
+        signal_mask = profile < threshold
 
         if not np.any(signal_mask):
             # No bands detected, return as is
             return profile, (0, len(profile))
 
-        # Find first and last non-background regions
+        # Find first and last signal regions
         signal_indices = np.where(signal_mask)[0]
 
         if len(signal_indices) == 0:
             return profile, (0, len(profile))
 
-        # Add some margin before first band and after last band
-        margin = max(5, len(profile) // 20)  # 5 pixels or 5% of length, whichever is larger
+        # Add margin to include context but remove pure white edges
+        margin = max(3, len(profile) // 50)  # Small margin
 
         start_idx = max(0, signal_indices[0] - margin)
         end_idx = min(len(profile), signal_indices[-1] + margin)
@@ -129,28 +130,30 @@ class GelImageProcessor:
     def detect_background(self, profile, window_size=5):
         """
         Detect background level using multiple methods and take the most robust estimate.
-        Returns the background baseline value.
+        Returns the background baseline value (should be close to 0 for white gel areas).
         """
         if len(profile) == 0:
             return 0
 
-        # Method 1: Use low percentile (handles most cases)
-        percentile_bg = np.percentile(profile, 10)
+        # Filter out pure white pixels (>0.95) which are not part of the gel matrix
+        # Only consider pixels that are actually part of the gel/bands
+        gel_pixels = profile[profile < 0.95]
 
-        # Method 2: Use edges (where there's likely no band)
-        edge_height = min(20, len(profile) // 5)
-        edge_vals = np.concatenate([profile[:edge_height], profile[-edge_height:]])
-        edge_bg = np.mean(edge_vals)
+        if len(gel_pixels) == 0:
+            # All pixels are white, no actual gel data
+            return 0
 
-        # Method 3: Use mode-like approach with histogram
-        hist, bin_edges = np.histogram(profile, bins=50)
-        mode_idx = np.argmax(hist)
-        mode_bg = (bin_edges[mode_idx] + bin_edges[mode_idx + 1]) / 2
+        # Method 1: Use low percentile of gel pixels only
+        percentile_bg = np.percentile(gel_pixels, 5)
 
-        # Take the median of these estimates
-        background = np.median([percentile_bg, edge_bg, mode_bg])
+        # Method 2: Use minimum value in gel region
+        min_bg = np.min(gel_pixels)
 
-        return max(0, background)
+        # Take the minimum to get the darkest "white" (lowest OD gel background)
+        background = min(percentile_bg, min_bg)
+
+        # Ensure it's not negative and not too high
+        return np.clip(background, 0, 0.3)  # Background should be very low for white gel
 
     def detect_peaks_and_bands(self, profile, background_value=None,
                                prominence_threshold=None, distance=5):

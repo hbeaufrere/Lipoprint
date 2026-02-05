@@ -194,7 +194,7 @@ def main():
 
     # Get profile for selected tube
     try:
-        profile = processor.get_densitometry_profile(tube_idx, auto_crop=False)
+        profile = processor.get_densitometry_profile(tube_idx, auto_crop=True)
         background = processor.detect_background(profile)
 
         # Create analyzer
