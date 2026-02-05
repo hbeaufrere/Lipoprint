@@ -194,7 +194,7 @@ def main():
 
     # Get profile for selected tube
     try:
-        profile = processor.get_densitometry_profile(tube_idx)
+        profile = processor.get_densitometry_profile(tube_idx, auto_crop=False)
         background = processor.detect_background(profile)
 
         # Create analyzer
@@ -304,17 +304,21 @@ def main():
             tube_region = tube_info['region']
 
             # Convert to 8-bit image for display
-            tube_display = np.clip(tube_region * 255 / np.max(tube_region), 0, 255).astype(np.uint8)
+            if np.max(tube_region) > 0:
+                tube_display = np.clip((tube_region / np.max(tube_region)) * 255, 0, 255).astype(np.uint8)
+            else:
+                tube_display = tube_region.astype(np.uint8)
 
             # Create a figure with matplotlib
-            fig_tube, ax_tube = plt.subplots(figsize=(3, 8))
-            ax_tube.imshow(tube_display, cmap='gray')
+            fig_tube = plt.figure(figsize=(4, 6))
+            ax_tube = fig_tube.add_subplot(111)
+            ax_tube.imshow(tube_display, cmap='gray', aspect='auto')
             ax_tube.set_xlabel('Width (pixels)')
             ax_tube.set_ylabel('Depth (pixels) →')
             ax_tube.set_title(f'Tube {st.session_state.current_tube + 1}')
-            plt.tight_layout()
 
             st.pyplot(fig_tube, use_container_width=True)
+            plt.close(fig_tube)
         except Exception as e:
             st.warning(f"Could not display tube image: {str(e)}")
 
