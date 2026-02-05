@@ -68,10 +68,11 @@ class GelImageProcessor:
 
         return self.tubes
 
-    def get_densitometry_profile(self, tube_index):
+    def get_densitometry_profile(self, tube_index, auto_crop=True):
         """
         Get the densitometry profile for a specific tube.
         Returns a 1D array of optical density values from top to bottom.
+        OD scale: 0 = pure white (no band), higher = darker (band present)
         """
         if not self.tubes or tube_index >= len(self.tubes):
             raise ValueError(f"Tube {tube_index} not found")
@@ -81,12 +82,49 @@ class GelImageProcessor:
         # Average across the width to get vertical profile
         profile = np.mean(tube_region, axis=1).astype(np.float32)
 
-        # Normalize to 0-1 range (treating as optical density)
-        profile_max = np.max(profile)
-        if profile_max > 0:
-            profile = profile / 255.0
+        # Normalize to 0-1 range (0=white/no band, 1=black/max band)
+        profile = profile / 255.0
+
+        # Auto-crop to relevant region (from white to darkest band)
+        if auto_crop:
+            profile, crop_indices = self._auto_crop_profile(profile)
+            # Store crop info for later use
+            self.last_crop_indices = crop_indices
+        else:
+            self.last_crop_indices = (0, len(profile))
 
         return profile
+
+    def _auto_crop_profile(self, profile):
+        """
+        Auto-crop profile to start at first significant band and end after last.
+        Returns cropped profile and crop indices.
+        """
+        # Find regions with actual signal (not pure white/background)
+        threshold = 0.15  # Consider pixels above this as potential band regions
+
+        # Find where signal starts (first band region)
+        signal_mask = profile > threshold
+
+        if not np.any(signal_mask):
+            # No bands detected, return as is
+            return profile, (0, len(profile))
+
+        # Find first and last non-background regions
+        signal_indices = np.where(signal_mask)[0]
+
+        if len(signal_indices) == 0:
+            return profile, (0, len(profile))
+
+        # Add some margin before first band and after last band
+        margin = max(5, len(profile) // 20)  # 5 pixels or 5% of length, whichever is larger
+
+        start_idx = max(0, signal_indices[0] - margin)
+        end_idx = min(len(profile), signal_indices[-1] + margin)
+
+        cropped = profile[start_idx:end_idx]
+
+        return cropped, (start_idx, end_idx)
 
     def detect_background(self, profile, window_size=5):
         """
@@ -133,20 +171,25 @@ class GelImageProcessor:
 
         # Auto-calculate prominence threshold if not provided
         if prominence_threshold is None:
-            profile_range = np.max(adjusted_profile) - np.min(adjusted_profile)
-            prominence_threshold = max(0.02, profile_range * 0.05)
+            # Use adaptive threshold based on profile characteristics
+            profile_max = np.max(adjusted_profile)
+            profile_std = np.std(adjusted_profile)
+
+            # Prominence should be at least std, but not more than 5% of max
+            prominence_threshold = max(profile_std * 0.5, profile_max * 0.02)
+            prominence_threshold = min(prominence_threshold, profile_max * 0.10)
 
         # Smooth the profile to reduce noise
-        smoothed_profile = gaussian_filter1d(adjusted_profile, sigma=1.0)
+        smoothed_profile = gaussian_filter1d(adjusted_profile, sigma=0.8)
 
-        # Find peaks with prominence criterion
+        # Find peaks with adaptive parameters
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             peaks, properties = find_peaks(
                 smoothed_profile,
                 prominence=prominence_threshold,
-                distance=distance,
-                height=prominence_threshold * 0.5
+                distance=max(2, distance // 2),  # More sensitive distance for cropped profiles
+                height=prominence_threshold * 0.3  # Lower height threshold
             )
 
         prominences = properties.get('prominences', np.zeros(len(peaks)))
@@ -154,9 +197,12 @@ class GelImageProcessor:
         # Filter peaks by minimum height
         if len(peaks) > 0:
             heights = smoothed_profile[peaks]
-            min_height = np.max(heights) * 0.15  # At least 15% of max peak
-            valid = heights >= min_height
-            peaks = peaks[valid]
+            max_height = np.max(heights)
+            if max_height > 0:
+                min_height = max_height * 0.10  # At least 10% of max peak (more sensitive)
+                valid = heights >= min_height
+                peaks = peaks[valid]
+                prominences = prominences[valid] if len(prominences) > 0 else prominences
 
         return peaks, prominences, background_value
 

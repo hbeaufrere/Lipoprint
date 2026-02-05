@@ -53,8 +53,11 @@ if 'bands_detected' not in st.session_state:
 
 
 def load_and_process_image(uploaded_file):
-    """Load image and extract tubes."""
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.tif') as tmp:
+    """Load image and extract tubes. Supports TIF and JPEG."""
+    # Determine file extension
+    file_ext = '.tif' if uploaded_file.name.lower().endswith(('.tif', '.tiff')) else '.jpg'
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp:
         tmp.write(uploaded_file.getbuffer())
         tmp_path = tmp.name
 
@@ -152,9 +155,9 @@ def main():
 
         # File upload
         uploaded_file = st.file_uploader(
-            "Upload TIF Image",
-            type=['tif', 'tiff'],
-            help="Select a gel electrophoresis TIF image"
+            "Upload Gel Image",
+            type=['tif', 'tiff', 'jpg', 'jpeg'],
+            help="Select a gel electrophoresis image (TIF or JPEG)"
         )
 
         if uploaded_file is not None:
@@ -293,6 +296,27 @@ def main():
         fig = display_densitometry_plot(profile, analyzer.peaks, background,
                                        analyzer.bands, colors)
         st.plotly_chart(fig, use_container_width=True)
+
+        # Display gel tube image below graph for correlation
+        st.write("**Gel Tube Image (Corresponding to Graph Above)**")
+        try:
+            tube_info = processor.tubes[st.session_state.current_tube]
+            tube_region = tube_info['region']
+
+            # Convert to 8-bit image for display
+            tube_display = np.clip(tube_region * 255 / np.max(tube_region), 0, 255).astype(np.uint8)
+
+            # Create a figure with matplotlib
+            fig_tube, ax_tube = plt.subplots(figsize=(3, 8))
+            ax_tube.imshow(tube_display, cmap='gray')
+            ax_tube.set_xlabel('Width (pixels)')
+            ax_tube.set_ylabel('Depth (pixels) →')
+            ax_tube.set_title(f'Tube {st.session_state.current_tube + 1}')
+            plt.tight_layout()
+
+            st.pyplot(fig_tube, use_container_width=True)
+        except Exception as e:
+            st.warning(f"Could not display tube image: {str(e)}")
 
     with col2:
         st.write("### 📊 Profile Statistics")
