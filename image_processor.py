@@ -34,48 +34,48 @@ class GelImageProcessor:
         # So: OD = 1 - (normalized_pixel) = 1 - (gray/255)
         self.inverted = self.gray_image
 
-    def extract_tubes(self, num_tubes=12, rows=1):
+    def extract_tubes(self, num_tubes=12, tubes_per_row=20):
         """
         Extract individual tube regions from the gel image.
-        Default: 12 tubes in 1 row (top row only)
-        Can also do 6x2 layout by passing rows=2
+
+        For 40 tubes (20x2 layout), this extracts first 12 tubes from TOP row only.
+
+        Parameters:
+        - num_tubes: Number of tubes to extract (12)
+        - tubes_per_row: Total tubes per row in image (20)
         """
         height, width = self.inverted.shape
 
-        # Calculate approximate tube dimensions
-        tubes_per_row = num_tubes // rows
+        # Calculate tube dimensions based on actual image layout
+        # Image has 40 tubes total: 20 wide (per row) x 2 tall (2 rows)
         tube_width = width // tubes_per_row
-        tube_height = height // rows
-
-        # Only use top portion of image (to avoid other rows/content below)
-        # Extract from top of image down
-        max_height_to_use = tube_height * rows
+        tube_height = height // 2  # Only use top half (first row of 20 tubes)
 
         self.tubes = []
         tube_idx = 0
 
-        for row in range(rows):
-            for col in range(tubes_per_row):
-                if tube_idx >= num_tubes:
-                    break
+        # Extract only from TOP row, first 12 tubes
+        for col in range(tubes_per_row):
+            if tube_idx >= num_tubes:
+                break
 
-                y_start = row * tube_height
-                y_end = (row + 1) * tube_height
-                x_start = col * tube_width
-                x_end = (col + 1) * tube_width
+            y_start = 0  # Start at top of image
+            y_end = tube_height  # End at midpoint (first row)
+            x_start = col * tube_width
+            x_end = (col + 1) * tube_width
 
-                # Extract tube region
-                tube_region = self.inverted[y_start:y_end, x_start:x_end]
+            # Extract tube region
+            tube_region = self.inverted[y_start:y_end, x_start:x_end]
 
-                self.tubes.append({
-                    'index': tube_idx,
-                    'region': tube_region,
-                    'y_range': (y_start, y_end),
-                    'x_range': (x_start, x_end),
-                    'original_coords': (y_start, y_end, x_start, x_end)
-                })
+            self.tubes.append({
+                'index': tube_idx,
+                'region': tube_region,
+                'y_range': (y_start, y_end),
+                'x_range': (x_start, x_end),
+                'original_coords': (y_start, y_end, x_start, x_end)
+            })
 
-                tube_idx += 1
+            tube_idx += 1
 
         return self.tubes
 
