@@ -500,12 +500,15 @@ def main():
                 'Percentage': f"{pct:.1f}%"
             })
 
-        # Display as a compact table
-        st.dataframe(
-            profile_data,
-            use_container_width=False,
-            hide_index=True
-        )
+        # Display as table with metrics layout for better visibility
+        import pandas as pd
+        profile_df = pd.DataFrame(profile_data)
+
+        # Create columns to display percentages side by side
+        profile_cols = st.columns(len(profile_data))
+        for idx, (col, row) in enumerate(zip(profile_cols, profile_data)):
+            with col:
+                st.metric(row['Lipoprotein'], row['Percentage'])
 
     # Export section
     st.write("---")
