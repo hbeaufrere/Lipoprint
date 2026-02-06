@@ -333,19 +333,31 @@ def main():
         # We want to display as a horizontal strip showing depth across the full width
         tube_height, tube_width = tube_display.shape
 
-        # Create horizontal figure - stretch to full width, keep height small
-        fig_width = 12
+        # Calculate crop region: find min and max trimmed positions
+        crop_start = 0
+        crop_end = tube_width
+        if analyzer.bands:
+            min_trimmed = min(trim_band_top_25percent(b['left'], b['right']) for b in analyzer.bands)
+            max_end = max(b['right'] for b in analyzer.bands)
+            crop_start = max(0, min_trimmed)
+            crop_end = min(tube_width, max_end)
+
+        # Crop the tube display to show only the analysis region
+        tube_display_cropped = tube_display[:, crop_start:crop_end]
+
+        # Transpose the image so depth becomes the horizontal axis
+        tube_display_transposed = np.transpose(tube_display_cropped)  # Now (width, height)
+
+        # Create horizontal figure - shorter width, keep height small
+        fig_width = 8
         fig_height = 1.5
 
         fig_tube = plt.figure(figsize=(fig_width, fig_height))
         ax_tube = fig_tube.add_subplot(111)
 
-        # Transpose the image so depth (original height) becomes the horizontal axis
-        tube_display_transposed = np.transpose(tube_display)  # Now (width, height)
-
         ax_tube.imshow(tube_display_transposed, cmap='gray', aspect='auto', origin='upper')
 
-        # Draw band boundaries on gel image as vertical lines (transposed)
+        # Draw band boundaries on gel image as vertical lines (transposed, adjusted for crop)
         if analyzer.bands:
             for i, band in enumerate(analyzer.bands):
                 left = band['left']
@@ -353,6 +365,10 @@ def main():
 
                 # Trim top 25% of each band
                 left_trimmed = trim_band_top_25percent(left, right)
+
+                # Adjust coordinates to account for crop
+                left_adj = left_trimmed - crop_start
+                right_adj = right - crop_start
 
                 band_name = band.get('category', f'Band {i+1}')
 
@@ -364,13 +380,19 @@ def main():
                 }
                 color = category_colors.get(band_name, colors[i % len(colors)])
 
-                # Draw vertical lines for band boundaries (after transpose, on trimmed region)
-                ax_tube.axvline(x=left_trimmed, color=color, linestyle='--', linewidth=2, alpha=0.7)
-                ax_tube.axvline(x=right, color=color, linestyle='--', linewidth=2, alpha=0.7)
+                # Draw vertical lines for band boundaries (after transpose and crop)
+                if 0 <= left_adj < tube_display_transposed.shape[0]:
+                    ax_tube.axvline(x=left_adj, color=color, linestyle='--', linewidth=2, alpha=0.7)
+                if 0 <= right_adj < tube_display_transposed.shape[0]:
+                    ax_tube.axvline(x=right_adj, color=color, linestyle='--', linewidth=2, alpha=0.7)
 
         # Also draw slider positions to preview
         if boundaries:
             for category, (start, end) in boundaries.items():
+                # Adjust coordinates for crop
+                start_adj = start - crop_start
+                end_adj = end - crop_start
+
                 category_colors = {
                     'VLDL': '#FF6B6B',
                     'IDL': '#FFA07A',
@@ -378,8 +400,10 @@ def main():
                     'HDL': '#4ECDC4'
                 }
                 color = category_colors.get(category, 'gray')
-                ax_tube.axvline(x=start, color=color, linestyle=':', linewidth=1, alpha=0.4)
-                ax_tube.axvline(x=end, color=color, linestyle=':', linewidth=1, alpha=0.4)
+                if 0 <= start_adj < tube_display_transposed.shape[0]:
+                    ax_tube.axvline(x=start_adj, color=color, linestyle=':', linewidth=1, alpha=0.4)
+                if 0 <= end_adj < tube_display_transposed.shape[0]:
+                    ax_tube.axvline(x=end_adj, color=color, linestyle=':', linewidth=1, alpha=0.4)
 
         ax_tube.set_xlabel('Depth (pixels)')
         ax_tube.set_ylabel('Width')
@@ -478,11 +502,7 @@ def main():
         st.dataframe(
             profile_data,
             use_container_width=False,
-            hide_index=True,
-            column_config={
-                'Lipoprotein': st.column_config.TextColumn(width='medium'),
-                'Percentage': st.column_config.TextColumn(width='small')
-            }
+            hide_index=True
         )
 
     # Export section
