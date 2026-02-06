@@ -331,22 +331,22 @@ def main():
         # Get dimensions
         tube_height, tube_width = tube_display.shape  # (depth, width)
 
-        # Transpose the image so depth becomes the horizontal axis
-        tube_display_transposed = np.transpose(tube_display)  # Now (width, depth)
-
-        # Calculate the 25% offset for x-axis
+        # Calculate the 25% offset and crop the image to start from 25%
         trim_offset = int(tube_height * 0.25)
+        tube_display_trimmed = tube_display[trim_offset:, :]  # Crop to remove top 25%
 
-        # Create horizontal figure
-        fig_width = 10
-        fig_height = 2
+        # Transpose the image so depth becomes the horizontal axis
+        tube_display_transposed = np.transpose(tube_display_trimmed)  # Now (width, depth)
+
+        # Create horizontal figure - wider to show full tube
+        fig_width = 12
+        fig_height = 1.5
 
         fig_tube = plt.figure(figsize=(fig_width, fig_height))
         ax_tube = fig_tube.add_subplot(111)
 
-        # Display the transposed image with x-axis offset starting at 25%
-        im = ax_tube.imshow(tube_display_transposed, cmap='gray', aspect='auto', origin='upper',
-                            extent=[trim_offset, tube_height, tube_width, 0])
+        # Display the transposed image
+        ax_tube.imshow(tube_display_transposed, cmap='gray', aspect='auto', origin='upper')
 
         # Draw band boundaries on gel image
         if analyzer.bands:
@@ -356,6 +356,10 @@ def main():
 
                 # Trim top 25% of each band
                 left_trimmed = trim_band_top_25percent(left, right)
+
+                # Adjust for the 25% crop we applied to the image
+                left_adj = left_trimmed - trim_offset
+                right_adj = right - trim_offset
 
                 band_name = band.get('category', f'Band {i+1}')
 
@@ -367,13 +371,19 @@ def main():
                 }
                 color = category_colors.get(band_name, colors[i % len(colors)])
 
-                # Draw horizontal lines for band boundaries
-                ax_tube.axhline(y=left_trimmed, color=color, linestyle='--', linewidth=2, alpha=0.7)
-                ax_tube.axhline(y=right, color=color, linestyle='--', linewidth=2, alpha=0.7)
+                # Draw horizontal lines for band boundaries (only if in visible range)
+                if -10 <= left_adj <= tube_display_transposed.shape[1] + 10:
+                    ax_tube.axhline(y=left_adj, color=color, linestyle='--', linewidth=2, alpha=0.7)
+                if -10 <= right_adj <= tube_display_transposed.shape[1] + 10:
+                    ax_tube.axhline(y=right_adj, color=color, linestyle='--', linewidth=2, alpha=0.7)
 
         # Also draw slider positions to preview
         if boundaries:
             for category, (start, end) in boundaries.items():
+                # Adjust for the 25% crop
+                start_adj = start - trim_offset
+                end_adj = end - trim_offset
+
                 category_colors = {
                     'VLDL': '#FF6B6B',
                     'IDL': '#FFA07A',
@@ -381,12 +391,15 @@ def main():
                     'HDL': '#4ECDC4'
                 }
                 color = category_colors.get(category, 'gray')
-                ax_tube.axhline(y=start, color=color, linestyle=':', linewidth=1, alpha=0.4)
-                ax_tube.axhline(y=end, color=color, linestyle=':', linewidth=1, alpha=0.4)
+                if -10 <= start_adj <= tube_display_transposed.shape[1] + 10:
+                    ax_tube.axhline(y=start_adj, color=color, linestyle=':', linewidth=1, alpha=0.4)
+                if -10 <= end_adj <= tube_display_transposed.shape[1] + 10:
+                    ax_tube.axhline(y=end_adj, color=color, linestyle=':', linewidth=1, alpha=0.4)
 
-        ax_tube.set_xlabel('Depth (pixels, shifted 25% right)')
+        # Set x-axis to show the trimmed region (25% to 100%)
+        ax_tube.set_xlabel(f'Depth (pixels: {trim_offset} to {tube_height})')
         ax_tube.set_ylabel('Width')
-        ax_tube.set_title(f'Tube {st.session_state.current_tube + 1} - Horizontal View')
+        ax_tube.set_title(f'Tube {st.session_state.current_tube + 1} - Horizontal View (Top 25% Trimmed)')
 
         st.pyplot(fig_tube, use_container_width=True)
         plt.close(fig_tube)
@@ -469,23 +482,20 @@ def main():
         st.write("---")
         st.write("### 📊 Lipoprotein profile (%)")
 
-        profile_data = []
+        # Create simple text display of percentages
+        profile_text = ""
         for i, (band, pct) in enumerate(zip(analyzer.bands, percentages)):
             band_name = band.get('category', f'Band {i+1}')
-            profile_data.append({
-                'Lipoprotein': band_name,
-                'Percentage': f"{pct:.1f}%"
-            })
+            profile_text += f"**{band_name}:** {pct:.1f}%  \n"
 
-        # Display as table with metrics layout for better visibility
-        import pandas as pd
-        profile_df = pd.DataFrame(profile_data)
+        st.markdown(profile_text)
 
-        # Create columns to display percentages side by side
-        profile_cols = st.columns(len(profile_data))
-        for idx, (col, row) in enumerate(zip(profile_cols, profile_data)):
-            with col:
-                st.metric(row['Lipoprotein'], row['Percentage'])
+        # Also display as metrics in columns
+        profile_cols = st.columns(len(analyzer.bands))
+        for idx, (band, pct) in enumerate(zip(analyzer.bands, percentages)):
+            band_name = band.get('category', f'Band {i+1}')
+            with profile_cols[idx]:
+                st.metric(band_name, f"{pct:.1f}%")
 
     # Export section
     st.write("---")
