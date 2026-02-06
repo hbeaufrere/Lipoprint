@@ -73,6 +73,13 @@ def load_and_process_image(uploaded_file):
         return None
 
 
+def trim_band_top_25percent(left, right):
+    """Trim the top 25% of a band region, returning new left boundary."""
+    band_height = right - left
+    trim_amount = int(band_height * 0.25)
+    return left + trim_amount
+
+
 def display_densitometry_plot(profile, peaks, background, bands, colors, slider_boundaries=None):
     """Create an interactive Plotly figure for densitometry."""
     x = np.arange(len(profile))
@@ -121,35 +128,39 @@ def display_densitometry_plot(profile, peaks, background, bands, colors, slider_
             left = band['left']
             right = band['right']
 
+            # Trim top 25% of each band
+            left_trimmed = trim_band_top_25percent(left, right)
+
             # Use category name if available, otherwise use generic band name
             band_name = band.get('category', f'Band {i+1}')
             color = category_colors.get(band_name, colors[i % len(colors)])
 
-            band_x = x[left:right+1]
-            band_y = profile[left:right+1]
+            # Use trimmed region for AUC calculation and display
+            band_x = x[left_trimmed:right+1]
+            band_y = profile[left_trimmed:right+1]
 
-            # Add filled area
+            # Add filled area with category color
             fig.add_trace(go.Scatter(
                 x=band_x, y=band_y,
                 fill='tonexty',
                 fillcolor=color,
-                opacity=0.3,
+                opacity=0.5,
                 line=dict(color=color, width=0),
                 name=band_name,
                 hovertemplate='%{fullData.name}<br>Position: %{x}<br>OD: %{y:.4f}<extra></extra>'
             ))
 
-            # Add boundary lines
-            fig.add_vline(x=left, line_dash="dash", line_color=color, line_width=2)
+            # Add boundary lines (on trimmed boundaries)
+            fig.add_vline(x=left_trimmed, line_dash="dash", line_color=color, line_width=2)
             fig.add_vline(x=right, line_dash="dash", line_color=color, line_width=2)
 
     # Plot temporary slider boundaries (when adjusting)
     if slider_boundaries:
         for category, (start, end) in slider_boundaries.items():
             color = category_colors.get(category, 'gray')
-            # Add lighter lines to show current slider positions
-            fig.add_vline(x=start, line_dash="dot", line_color=color, line_width=1, opacity=0.5)
-            fig.add_vline(x=end, line_dash="dot", line_color=color, line_width=1, opacity=0.5)
+            # Add thicker, more visible lines to show current slider positions
+            fig.add_vline(x=start, line_dash="dot", line_color=color, line_width=4, opacity=0.8)
+            fig.add_vline(x=end, line_dash="dot", line_color=color, line_width=4, opacity=0.8)
 
     fig.update_layout(
         title='Gel Densitometry Profile',
@@ -339,6 +350,10 @@ def main():
             for i, band in enumerate(analyzer.bands):
                 left = band['left']
                 right = band['right']
+
+                # Trim top 25% of each band
+                left_trimmed = trim_band_top_25percent(left, right)
+
                 band_name = band.get('category', f'Band {i+1}')
 
                 category_colors = {
@@ -349,8 +364,8 @@ def main():
                 }
                 color = category_colors.get(band_name, colors[i % len(colors)])
 
-                # Draw vertical lines for band boundaries (after transpose)
-                ax_tube.axvline(x=left, color=color, linestyle='--', linewidth=2, alpha=0.7)
+                # Draw vertical lines for band boundaries (after transpose, on trimmed region)
+                ax_tube.axvline(x=left_trimmed, color=color, linestyle='--', linewidth=2, alpha=0.7)
                 ax_tube.axvline(x=right, color=color, linestyle='--', linewidth=2, alpha=0.7)
 
         # Also draw slider positions to preview
@@ -446,6 +461,29 @@ def main():
         )
 
         st.plotly_chart(fig_bar, use_container_width=True)
+
+        # Lipoprotein profile percentage table
+        st.write("---")
+        st.write("### 📊 Lipoprotein profile (%)")
+
+        profile_data = []
+        for i, (band, pct) in enumerate(zip(analyzer.bands, percentages)):
+            band_name = band.get('category', f'Band {i+1}')
+            profile_data.append({
+                'Lipoprotein': band_name,
+                'Percentage': f"{pct:.1f}%"
+            })
+
+        # Display as a compact table
+        st.dataframe(
+            profile_data,
+            use_container_width=False,
+            hide_index=True,
+            column_config={
+                'Lipoprotein': st.column_config.TextColumn(width='medium'),
+                'Percentage': st.column_config.TextColumn(width='small')
+            }
+        )
 
     # Export section
     st.write("---")
