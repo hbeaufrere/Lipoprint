@@ -77,6 +77,14 @@ def display_densitometry_plot(profile, peaks, background, bands, colors):
     """Create an interactive Plotly figure for densitometry."""
     x = np.arange(len(profile))
 
+    # Category colors
+    category_colors = {
+        'VLDL': '#FF6B6B',
+        'IDL': '#FFA07A',
+        'LDL': '#FFD700',
+        'HDL': '#4ECDC4'
+    }
+
     fig = go.Figure()
 
     # Plot profile
@@ -112,7 +120,10 @@ def display_densitometry_plot(profile, peaks, background, bands, colors):
         for i, band in enumerate(bands):
             left = band['left']
             right = band['right']
-            color = colors[i % len(colors)]
+
+            # Use category name if available, otherwise use generic band name
+            band_name = band.get('category', f'Band {i+1}')
+            color = category_colors.get(band_name, colors[i % len(colors)])
 
             band_x = x[left:right+1]
             band_y = profile[left:right+1]
@@ -124,8 +135,8 @@ def display_densitometry_plot(profile, peaks, background, bands, colors):
                 fillcolor=color,
                 opacity=0.3,
                 line=dict(color=color, width=0),
-                name=f'Band {i+1}',
-                hovertemplate='Band %{fullData.name}<br>Position: %{x}<br>OD: %{y:.4f}<extra></extra>'
+                name=band_name,
+                hovertemplate='%{fullData.name}<br>Position: %{x}<br>OD: %{y:.4f}<extra></extra>'
             ))
 
             # Add boundary lines
@@ -205,83 +216,72 @@ def main():
         st.error(f"Error analyzing tube: {str(e)}")
         return
 
-    # Control buttons
+    # Manual band definition with 4 lipid categories
     st.write("---")
-    col1, col2, col3 = st.columns(3)
+    st.write("### 🧬 Define Lipoprotein Bands (VLDL, IDL, LDL, HDL)")
+
+    profile_length = len(profile)
+
+    # Category definitions: VLDL, IDL, LDL, HDL
+    categories = ['VLDL', 'IDL', 'LDL', 'HDL']
+    category_colors = {
+        'VLDL': '#FF6B6B',  # Red
+        'IDL': '#FFA07A',   # Light coral
+        'LDL': '#FFD700',   # Gold
+        'HDL': '#4ECDC4'    # Teal
+    }
+
+    # Create sliders for category boundaries
+    col1, col2, col3, col4 = st.columns(4)
+
+    boundaries = {}
 
     with col1:
-        if st.button("🎯 Auto-Detect Bands", key="detect_peaks"):
-            try:
-                peaks = analyzer.detect_automatic_peaks(prominence_threshold=0.05)
-
-                # Create bands from peaks
-                analyzer.bands = []
-                peak_width = 5
-
-                for peak in peaks:
-                    left = max(0, peak - peak_width)
-                    right = min(len(profile) - 1, peak + peak_width)
-                    analyzer.bands.append({'left': left, 'right': right, 'peak': peak})
-
-                st.session_state.bands_detected = True
-                st.success(f"✅ Detected {len(analyzer.bands)} bands!")
-
-            except Exception as e:
-                st.error(f"Error detecting peaks: {str(e)}")
+        st.write("**VLDL**")
+        vldl_start = st.slider("VLDL start", 0, profile_length - 1, 0, key="vldl_start")
+        vldl_end = st.slider("VLDL end", vldl_start + 1, profile_length - 1, int(profile_length * 0.25), key="vldl_end")
+        boundaries['VLDL'] = (vldl_start, vldl_end)
 
     with col2:
-        manual_bands = st.checkbox(
-            "📊 Manually Define Bands",
-            key="manual_bands_checkbox"
-        )
+        st.write("**IDL**")
+        idl_start = st.slider("IDL start", vldl_end, profile_length - 1, int(profile_length * 0.25), key="idl_start")
+        idl_end = st.slider("IDL end", idl_start + 1, profile_length - 1, int(profile_length * 0.5), key="idl_end")
+        boundaries['IDL'] = (idl_start, idl_end)
 
     with col3:
-        if st.button("🧹 Clear Bands", key="clear_bands"):
+        st.write("**LDL**")
+        ldl_start = st.slider("LDL start", idl_end, profile_length - 1, int(profile_length * 0.5), key="ldl_start")
+        ldl_end = st.slider("LDL end", ldl_start + 1, profile_length - 1, int(profile_length * 0.75), key="ldl_end")
+        boundaries['LDL'] = (ldl_start, ldl_end)
+
+    with col4:
+        st.write("**HDL**")
+        hdl_start = st.slider("HDL start", ldl_end, profile_length - 1, int(profile_length * 0.75), key="hdl_start")
+        hdl_end = st.slider("HDL end", hdl_start + 1, profile_length, profile_length, key="hdl_end")
+        boundaries['HDL'] = (hdl_start, min(hdl_end, profile_length - 1))
+
+    # Apply category boundaries to bands
+    col_apply = st.columns(1)[0]
+    with col_apply:
+        if st.button("✅ Apply Band Definitions", key="apply_categories"):
             analyzer.bands = []
-            st.session_state.bands_detected = False
-            st.rerun()
-
-    # Manual band definition
-    if manual_bands and not st.session_state.bands_detected:
-        st.info("Define bands manually by specifying position ranges")
-
-        num_manual_bands = st.number_input(
-            "Number of bands to define",
-            min_value=1,
-            max_value=10,
-            value=1,
-            key="num_manual_bands"
-        )
-
-        analyzer.bands = []
-
-        for i in range(num_manual_bands):
-            st.write(f"**Band {i+1}**")
-            col1, col2 = st.columns(2)
-
-            with col1:
-                left = st.number_input(
-                    f"Left boundary (Band {i+1})",
-                    min_value=0,
-                    max_value=len(profile) - 1,
-                    value=max(0, (len(profile) // (num_manual_bands + 1)) * (i + 1) - 5),
-                    key=f"left_{i}"
-                )
-
-            with col2:
-                right = st.number_input(
-                    f"Right boundary (Band {i+1})",
-                    min_value=0,
-                    max_value=len(profile) - 1,
-                    value=min(len(profile) - 1, (len(profile) // (num_manual_bands + 1)) * (i + 1) + 5),
-                    key=f"right_{i}"
-                )
-
-            analyzer.bands.append({'left': min(left, right), 'right': max(left, right)})
-
-        if st.button("✅ Apply Manual Bands", key="apply_manual"):
+            for category in categories:
+                start, end = boundaries[category]
+                if start < end:
+                    analyzer.bands.append({
+                        'left': start,
+                        'right': end,
+                        'category': category
+                    })
             st.session_state.bands_detected = True
+            st.success(f"✅ Defined {len(analyzer.bands)} bands!")
             st.rerun()
+
+    # Clear button
+    if st.button("🧹 Clear All Bands", key="clear_bands"):
+        analyzer.bands = []
+        st.session_state.bands_detected = False
+        st.rerun()
 
     st.write("---")
 
@@ -289,16 +289,19 @@ def main():
     colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8',
               '#F7DC6F', '#BB8FCE', '#85C1E2', '#F8B195', '#A8D8EA']
 
-    col1, col2 = st.columns([3, 1])
+    # Create Plotly figure
+    fig = display_densitometry_plot(profile, analyzer.peaks, background,
+                                   analyzer.bands, colors)
 
-    with col1:
-        # Create Plotly figure
-        fig = display_densitometry_plot(profile, analyzer.peaks, background,
-                                       analyzer.bands, colors)
+    # Display graph and gel image side by side
+    col_graph, col_gel = st.columns([2, 1])
+
+    with col_graph:
+        st.write("### 📈 Densitometry Profile")
         st.plotly_chart(fig, use_container_width=True)
 
-        # Display gel tube image below graph for correlation
-        st.write("**Gel Tube Image (Corresponding to Graph Above)**")
+    with col_gel:
+        st.write("### 🧫 Gel Tube Image")
         try:
             tube_info = processor.tubes[st.session_state.current_tube]
             tube_region = tube_info['region']
@@ -312,14 +315,34 @@ def main():
             # Create a figure with correct aspect ratio
             tube_height, tube_width = tube_display.shape
             aspect_ratio = tube_width / tube_height if tube_height > 0 else 1
-            fig_height = 8
-            fig_width = max(2, fig_height * aspect_ratio)
+            fig_height = 6
+            fig_width = max(1.5, fig_height * aspect_ratio)
 
             fig_tube = plt.figure(figsize=(fig_width, fig_height))
             ax_tube = fig_tube.add_subplot(111)
-            ax_tube.imshow(tube_display, cmap='gray', aspect='equal')  # Keep original aspect ratio
-            ax_tube.set_xlabel('Width (pixels)')
-            ax_tube.set_ylabel('Depth (pixels) →')
+            ax_tube.imshow(tube_display, cmap='gray', aspect='equal')
+
+            # Draw band boundaries on gel image
+            if analyzer.bands:
+                for i, band in enumerate(analyzer.bands):
+                    left = band['left']
+                    right = band['right']
+                    band_name = band.get('category', f'Band {i+1}')
+
+                    category_colors = {
+                        'VLDL': '#FF6B6B',
+                        'IDL': '#FFA07A',
+                        'LDL': '#FFD700',
+                        'HDL': '#4ECDC4'
+                    }
+                    color = category_colors.get(band_name, colors[i % len(colors)])
+
+                    # Draw horizontal lines for band boundaries
+                    ax_tube.axhline(y=left, color=color, linestyle='--', linewidth=2, alpha=0.7)
+                    ax_tube.axhline(y=right, color=color, linestyle='--', linewidth=2, alpha=0.7)
+
+            ax_tube.set_xlabel('Width')
+            ax_tube.set_ylabel('Depth')
             ax_tube.set_title(f'Tube {st.session_state.current_tube + 1}')
 
             st.pyplot(fig_tube, use_container_width=True)
@@ -327,17 +350,21 @@ def main():
         except Exception as e:
             st.warning(f"Could not display tube image: {str(e)}")
 
-    with col2:
-        st.write("### 📊 Profile Statistics")
+    # Profile statistics below
+    col_stats = st.columns(4)
+    with col_stats[0]:
         st.metric("Background OD", f"{background:.4f}")
+    with col_stats[1]:
         st.metric("Peak OD", f"{np.max(profile):.4f}")
+    with col_stats[2]:
         st.metric("Profile Length", f"{len(profile)} px")
+    with col_stats[3]:
         st.metric("Detected Bands", len(analyzer.bands))
 
     # Band analysis
     if analyzer.bands:
         st.write("---")
-        st.write("### 📋 Band Composition Analysis")
+        st.write("### 📋 Lipoprotein Composition Analysis")
 
         band_aucs, percentages = analyzer.calculate_band_percentages()
         total_auc = sum(band_aucs)
@@ -345,8 +372,9 @@ def main():
         # Display as table
         band_data = []
         for i, (band, auc, pct) in enumerate(zip(analyzer.bands, band_aucs, percentages)):
+            band_name = band.get('category', f'Band {i+1}')
             band_data.append({
-                'Band': f'Band {i+1}',
+                'Lipoprotein': band_name,
                 'Position': f"{band['left']}-{band['right']} px",
                 'AUC': f"{auc:.2f}",
                 'Percentage': f"{pct:.2f}%"
@@ -359,17 +387,24 @@ def main():
         )
 
         # Visual representation
-        st.write("#### Band Distribution")
-        chart_data = {
-            'Band': [f"Band {i+1}" for i in range(len(percentages))],
-            'Percentage': percentages
+        st.write("#### Lipoprotein Distribution")
+
+        # Get category names and colors
+        category_colors_map = {
+            'VLDL': '#FF6B6B',
+            'IDL': '#FFA07A',
+            'LDL': '#FFD700',
+            'HDL': '#4ECDC4'
         }
+
+        band_names = [band.get('category', f"Band {i+1}") for i, band in enumerate(analyzer.bands)]
+        bar_colors = [category_colors_map.get(name, colors[i % len(colors)]) for i, name in enumerate(band_names)]
 
         fig_bar = go.Figure(data=[
             go.Bar(
-                x=[f"Band {i+1}" for i in range(len(percentages))],
+                x=band_names,
                 y=percentages,
-                marker_color=colors[:len(percentages)],
+                marker_color=bar_colors,
                 text=[f"{p:.1f}%" for p in percentages],
                 textposition='auto',
                 hovertemplate='%{x}<br>%{y:.2f}%<extra></extra>'
@@ -377,8 +412,8 @@ def main():
         ])
 
         fig_bar.update_layout(
-            title='Band Percentage Composition',
-            xaxis_title='Band',
+            title='Lipoprotein Percentage Composition',
+            xaxis_title='Lipoprotein',
             yaxis_title='Percentage (%)',
             height=400,
             template='plotly_white',
