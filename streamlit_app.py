@@ -73,7 +73,7 @@ def load_and_process_image(uploaded_file):
         return None
 
 
-def display_densitometry_plot(profile, peaks, background, bands, colors):
+def display_densitometry_plot(profile, peaks, background, bands, colors, slider_boundaries=None):
     """Create an interactive Plotly figure for densitometry."""
     x = np.arange(len(profile))
 
@@ -142,6 +142,14 @@ def display_densitometry_plot(profile, peaks, background, bands, colors):
             # Add boundary lines
             fig.add_vline(x=left, line_dash="dash", line_color=color, line_width=2)
             fig.add_vline(x=right, line_dash="dash", line_color=color, line_width=2)
+
+    # Plot temporary slider boundaries (when adjusting)
+    if slider_boundaries:
+        for category, (start, end) in slider_boundaries.items():
+            color = category_colors.get(category, 'gray')
+            # Add lighter lines to show current slider positions
+            fig.add_vline(x=start, line_dash="dot", line_color=color, line_width=1, opacity=0.5)
+            fig.add_vline(x=end, line_dash="dot", line_color=color, line_width=1, opacity=0.5)
 
     fig.update_layout(
         title='Gel Densitometry Profile',
@@ -289,66 +297,83 @@ def main():
     colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8',
               '#F7DC6F', '#BB8FCE', '#85C1E2', '#F8B195', '#A8D8EA']
 
-    # Create Plotly figure
+    # Create Plotly figure with slider boundaries
     fig = display_densitometry_plot(profile, analyzer.peaks, background,
-                                   analyzer.bands, colors)
+                                   analyzer.bands, colors, slider_boundaries=boundaries)
 
-    # Display graph and gel image side by side
-    col_graph, col_gel = st.columns([2, 1])
+    # Display graph full width
+    st.write("### 📈 Densitometry Profile")
+    st.plotly_chart(fig, use_container_width=True)
 
-    with col_graph:
-        st.write("### 📈 Densitometry Profile")
-        st.plotly_chart(fig, use_container_width=True)
+    # Display gel tube image horizontally below the graph
+    st.write("### 🧫 Gel Tube Image (Corresponding Depth)")
+    try:
+        tube_info = processor.tubes[st.session_state.current_tube]
+        tube_region = tube_info['region']
 
-    with col_gel:
-        st.write("### 🧫 Gel Tube Image")
-        try:
-            tube_info = processor.tubes[st.session_state.current_tube]
-            tube_region = tube_info['region']
+        # Convert to 8-bit image for display
+        if np.max(tube_region) > 0:
+            tube_display = np.clip((tube_region / np.max(tube_region)) * 255, 0, 255).astype(np.uint8)
+        else:
+            tube_display = tube_region.astype(np.uint8)
 
-            # Convert to 8-bit image for display
-            if np.max(tube_region) > 0:
-                tube_display = np.clip((tube_region / np.max(tube_region)) * 255, 0, 255).astype(np.uint8)
-            else:
-                tube_display = tube_region.astype(np.uint8)
+        # Transpose to display horizontally (width becomes horizontal, depth becomes vertical small strip)
+        # Original: (height, width) = (depth, width)
+        # We want to display as a horizontal strip showing depth across the full width
+        tube_height, tube_width = tube_display.shape
 
-            # Create a figure with correct aspect ratio
-            tube_height, tube_width = tube_display.shape
-            aspect_ratio = tube_width / tube_height if tube_height > 0 else 1
-            fig_height = 6
-            fig_width = max(1.5, fig_height * aspect_ratio)
+        # Create horizontal figure - stretch to full width, keep height small
+        fig_width = 12
+        fig_height = 1.5
 
-            fig_tube = plt.figure(figsize=(fig_width, fig_height))
-            ax_tube = fig_tube.add_subplot(111)
-            ax_tube.imshow(tube_display, cmap='gray', aspect='equal')
+        fig_tube = plt.figure(figsize=(fig_width, fig_height))
+        ax_tube = fig_tube.add_subplot(111)
 
-            # Draw band boundaries on gel image
-            if analyzer.bands:
-                for i, band in enumerate(analyzer.bands):
-                    left = band['left']
-                    right = band['right']
-                    band_name = band.get('category', f'Band {i+1}')
+        # Transpose the image so depth (original height) becomes the horizontal axis
+        tube_display_transposed = np.transpose(tube_display)  # Now (width, height)
 
-                    category_colors = {
-                        'VLDL': '#FF6B6B',
-                        'IDL': '#FFA07A',
-                        'LDL': '#FFD700',
-                        'HDL': '#4ECDC4'
-                    }
-                    color = category_colors.get(band_name, colors[i % len(colors)])
+        ax_tube.imshow(tube_display_transposed, cmap='gray', aspect='auto', origin='upper')
 
-                    # Draw horizontal lines for band boundaries
-                    ax_tube.axhline(y=left, color=color, linestyle='--', linewidth=2, alpha=0.7)
-                    ax_tube.axhline(y=right, color=color, linestyle='--', linewidth=2, alpha=0.7)
+        # Draw band boundaries on gel image as vertical lines (transposed)
+        if analyzer.bands:
+            for i, band in enumerate(analyzer.bands):
+                left = band['left']
+                right = band['right']
+                band_name = band.get('category', f'Band {i+1}')
 
-            ax_tube.set_xlabel('Width')
-            ax_tube.set_ylabel('Depth')
-            ax_tube.set_title(f'Tube {st.session_state.current_tube + 1}')
+                category_colors = {
+                    'VLDL': '#FF6B6B',
+                    'IDL': '#FFA07A',
+                    'LDL': '#FFD700',
+                    'HDL': '#4ECDC4'
+                }
+                color = category_colors.get(band_name, colors[i % len(colors)])
 
-            st.pyplot(fig_tube, use_container_width=True)
-            plt.close(fig_tube)
-        except Exception as e:
-            st.warning(f"Could not display tube image: {str(e)}")
+                # Draw vertical lines for band boundaries (after transpose)
+                ax_tube.axvline(x=left, color=color, linestyle='--', linewidth=2, alpha=0.7)
+                ax_tube.axvline(x=right, color=color, linestyle='--', linewidth=2, alpha=0.7)
+
+        # Also draw slider positions to preview
+        if boundaries:
+            for category, (start, end) in boundaries.items():
+                category_colors = {
+                    'VLDL': '#FF6B6B',
+                    'IDL': '#FFA07A',
+                    'LDL': '#FFD700',
+                    'HDL': '#4ECDC4'
+                }
+                color = category_colors.get(category, 'gray')
+                ax_tube.axvline(x=start, color=color, linestyle=':', linewidth=1, alpha=0.4)
+                ax_tube.axvline(x=end, color=color, linestyle=':', linewidth=1, alpha=0.4)
+
+        ax_tube.set_xlabel('Depth (pixels)')
+        ax_tube.set_ylabel('Width')
+        ax_tube.set_title(f'Tube {st.session_state.current_tube + 1} - Horizontal View')
+
+        st.pyplot(fig_tube, use_container_width=True)
+        plt.close(fig_tube)
+    except Exception as e:
+        st.warning(f"Could not display tube image: {str(e)}")
 
     # Profile statistics below
     col_stats = st.columns(4)
