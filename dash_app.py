@@ -270,8 +270,26 @@ app.layout = dbc.Container([
 
                     html.Hr(),
 
+                    # Cholesterol Input
+                    dbc.Row([
+                        dbc.Col([
+                            html.Label("Total Cholesterol (mg/dL):", className="fw-bold"),
+                            dcc.Input(
+                                id='cholesterol-input',
+                                type='number',
+                                placeholder='Enter value',
+                                value=None,
+                                min=0,
+                                className='form-control form-control-sm',
+                                style={'font-size': '13px', 'padding': '5px'}
+                            )
+                        ], width=6),
+                    ], className="mb-2"),
+
+                    html.Hr(),
+
                     # Results Table
-                    html.Label("Lipoprotein Profile (%):", className="fw-bold"),
+                    html.Label("Lipoprotein Profile:", className="fw-bold"),
                     html.Div(id='results-table'),
 
                     html.Br(),
@@ -451,10 +469,11 @@ def display_reference_tubes(processor_data):
      Input('idl-slider', 'value'),
      Input('ldl-slider', 'value'),
      Input('hdl-slider', 'value'),
-     Input('processor-store', 'data')],
+     Input('processor-store', 'data'),
+     Input('cholesterol-input', 'value')],
     prevent_initial_call=True
 )
-def update_analysis(tube_idx, vldl, idl, ldl, hdl, processor_data):
+def update_analysis(tube_idx, vldl, idl, ldl, hdl, processor_data, cholesterol_value):
     """Update all visualizations and results"""
 
     if not processor_data:
@@ -581,11 +600,16 @@ def update_analysis(tube_idx, vldl, idl, ldl, hdl, processor_data):
 
     results_data = []
     for band, auc, pct in zip(bands, band_aucs, percentages):
-        results_data.append({
+        row = {
             'Lipoprotein': band['category'],
             'AUC': f"{auc:.2f}",
             'Percentage': f"{pct:.1f}%"
-        })
+        }
+        # Add cholesterol column if value provided
+        if cholesterol_value and cholesterol_value > 0:
+            cholesterol_mg = (pct / 100.0) * cholesterol_value
+            row['Cholesterol (mg/dL)'] = f"{cholesterol_mg:.1f}"
+        results_data.append(row)
 
     df_results = pd.DataFrame(results_data)
 
