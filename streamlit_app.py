@@ -108,20 +108,21 @@ with left_col:
 
         # Band definition sliders
         st.subheader("Band Limits")
-        st.caption("Click boundaries on the graph to adjust →")
+        st.caption("Adjust band boundaries using sliders →")
 
         profile = processor.get_densitometry_profile(tube_idx, auto_crop=False)
         profile_len = len(profile)
 
-        # Check for boundary adjustments from graph interaction
-        vldl_start_val = st.session_state.get("boundary_vldl_start", 0)
-        vldl_end_val = st.session_state.get("boundary_vldl_end", profile_len//4)
-        idl_start_val = st.session_state.get("boundary_idl_start", profile_len//4)
-        idl_end_val = st.session_state.get("boundary_idl_end", profile_len//2)
-        ldl_start_val = st.session_state.get("boundary_ldl_start", profile_len//2)
-        ldl_end_val = st.session_state.get("boundary_ldl_end", int(profile_len*0.75))
-        hdl_start_val = st.session_state.get("boundary_hdl_start", int(profile_len*0.75))
-        hdl_end_val = min(st.session_state.get("boundary_hdl_end", profile_len-1), profile_len-1)
+        # Default band positions (in pixels, from Lipoware ROI)
+        # VLDL: 27-48, IDL: 48-65, LDL: 68-120, HDL: 260-300
+        vldl_start_val = st.session_state.get("boundary_vldl_start", 27)
+        vldl_end_val = st.session_state.get("boundary_vldl_end", 48)
+        idl_start_val = st.session_state.get("boundary_idl_start", 48)
+        idl_end_val = st.session_state.get("boundary_idl_end", 65)
+        ldl_start_val = st.session_state.get("boundary_ldl_start", 68)
+        ldl_end_val = st.session_state.get("boundary_ldl_end", 120)
+        hdl_start_val = st.session_state.get("boundary_hdl_start", 260)
+        hdl_end_val = min(st.session_state.get("boundary_hdl_end", 300), profile_len-1)
 
         # Simple independent sliders for each fraction
         vldl_start = st.slider("VLDL start", 0, profile_len-1, vldl_start_val, key="vldl_s")
@@ -296,8 +297,8 @@ with right_col:
 
             st.divider()
 
-        # ---- GEL IMAGE ----
-        st.subheader("Gel Tube Image")
+        # ---- GEL IMAGE (INTERACTIVE WITH DRAGGABLE BOUNDARIES) ----
+        st.subheader("Gel Tube Image (Click boundaries to adjust)")
 
         try:
             tube_info = processor.tubes[tube_idx]
@@ -315,18 +316,21 @@ with right_col:
             # Trim top 25% of depth
             trim_offset = int(depth * 0.25)
             tube_trimmed = tube_display[trim_offset:, :]
+            tube_height_trimmed = tube_trimmed.shape[0]
 
-            # Transpose to show horizontally: (width, depth) so width is x-axis
-            tube_horizontal = np.transpose(tube_trimmed)
+            # Create Plotly figure with gel image as background
+            fig_gel = go.Figure()
 
-            # Plot
-            fig_gel = plt.figure(figsize=(12, 2.5))
-            ax = fig_gel.add_subplot(111)
+            # Add gel image as heatmap
+            fig_gel.add_trace(go.Heatmap(
+                z=tube_trimmed,
+                colorscale='Gray',
+                showscale=False,
+                hovertemplate='Depth: %{y}<br>Width: %{x}<br>Intensity: %{z}<extra></extra>',
+                name='Gel'
+            ))
 
-            im = ax.imshow(tube_horizontal, cmap='gray', aspect='auto', origin='upper')
-            plt.colorbar(im, ax=ax, label='Intensity')
-
-            # Draw band boundaries
+            # Add band boundaries as draggable shapes
             for band in bands:
                 left = band['left']
                 right = band['right']
@@ -339,17 +343,65 @@ with right_col:
                 left_adj = left_trim - trim_offset
                 right_adj = right - trim_offset
 
-                if 0 <= left_adj < tube_horizontal.shape[1]:
-                    ax.axhline(y=left_adj, color=color, linestyle='--', linewidth=2, alpha=0.8)
-                if 0 <= right_adj < tube_horizontal.shape[1]:
-                    ax.axhline(y=right_adj, color=color, linestyle='--', linewidth=2, alpha=0.8)
+                if 0 <= left_adj < tube_height_trimmed:
+                    fig_gel.add_hline(y=left_adj, line_color=color, line_width=3,
+                                     line_dash="dash", opacity=0.8,
+                                     annotation_text=f"{category} start", annotation_position="right")
 
-            ax.set_xlabel('Width')
-            ax.set_ylabel('Depth (trimmed 25%)')
-            ax.set_title(f'Tube {tube_idx+1} - Horizontal View')
+                if 0 <= right_adj < tube_height_trimmed:
+                    fig_gel.add_hline(y=right_adj, line_color=color, line_width=3,
+                                     line_dash="dash", opacity=0.8,
+                                     annotation_text=f"{category} end", annotation_position="right")
 
-            st.pyplot(fig_gel, use_container_width=True)
-            plt.close(fig_gel)
+            fig_gel.update_layout(
+                title=f'Tube {tube_idx+1} - Gel Image (Click boundaries to adjust)',
+                xaxis_title='Width (pixels)',
+                yaxis_title='Depth (trimmed 25%)',
+                height=350,
+                hovermode='closest',
+                template='plotly_white',
+                yaxis=dict(autorange='reversed')  # Match image orientation
+            )
+
+            # Display gel image with interactive boundaries
+            if PLOTLY_EVENTS_AVAILABLE:
+                gel_clicks = plotly_events(
+                    fig_gel,
+                    click_event=True,
+                    hover_event=False,
+                    select_event=False,
+                    key="gel_image"
+                )
+
+                # Handle clicks on gel image boundaries
+                if gel_clicks and len(gel_clicks) > 0:
+                    clicked_y = int(gel_clicks[0]['y'])
+
+                    # Find which boundary was clicked
+                    boundaries_gel = {
+                        'vldl_start': vldl_start - trim_offset,
+                        'vldl_end': vldl_end - trim_offset,
+                        'idl_start': idl_start - trim_offset,
+                        'idl_end': idl_end - trim_offset,
+                        'ldl_start': ldl_start - trim_offset,
+                        'ldl_end': ldl_end - trim_offset,
+                        'hdl_start': hdl_start - trim_offset,
+                        'hdl_end': hdl_end - trim_offset,
+                    }
+
+                    closest_boundary = None
+                    closest_distance = 15
+
+                    for boundary_name, boundary_value in boundaries_gel.items():
+                        distance = abs(clicked_y - boundary_value)
+                        if distance < closest_distance:
+                            closest_boundary = boundary_name
+                            closest_distance = distance
+
+                    if closest_boundary:
+                        st.session_state.selected_boundary = closest_boundary
+            else:
+                st.plotly_chart(fig_gel, use_container_width=True)
 
         except Exception as e:
             st.warning(f"Could not display gel image: {str(e)}")
