@@ -13,6 +13,7 @@ import plotly.graph_objects as go
 
 from image_processor import GelImageProcessor, DensitometryAnalyzer
 from export_handler import AnalysisExporter
+from streamlit_plotly_events import plotly_events
 
 # Page configuration
 st.set_page_config(
@@ -28,6 +29,8 @@ if 'processor' not in st.session_state:
     st.session_state.processor = None
 if 'current_tube' not in st.session_state:
     st.session_state.current_tube = 0
+if 'selected_boundary' not in st.session_state:
+    st.session_state.selected_boundary = None
 
 
 def load_image(uploaded_file):
@@ -99,23 +102,33 @@ with left_col:
 
         # Band definition sliders
         st.subheader("Band Limits")
-        st.caption("Define boundaries for each lipoprotein fraction")
+        st.caption("Click boundaries on the graph to adjust →")
 
         profile = processor.get_densitometry_profile(tube_idx, auto_crop=False)
         profile_len = len(profile)
 
+        # Check for boundary adjustments from graph interaction
+        vldl_start_val = st.session_state.get("boundary_vldl_start", 0)
+        vldl_end_val = st.session_state.get("boundary_vldl_end", profile_len//4)
+        idl_start_val = st.session_state.get("boundary_idl_start", profile_len//4)
+        idl_end_val = st.session_state.get("boundary_idl_end", profile_len//2)
+        ldl_start_val = st.session_state.get("boundary_ldl_start", profile_len//2)
+        ldl_end_val = st.session_state.get("boundary_ldl_end", int(profile_len*0.75))
+        hdl_start_val = st.session_state.get("boundary_hdl_start", int(profile_len*0.75))
+        hdl_end_val = min(st.session_state.get("boundary_hdl_end", profile_len-1), profile_len-1)
+
         # Simple independent sliders for each fraction
-        vldl_start = st.slider("VLDL start", 0, profile_len-1, 0, key="vldl_s")
-        vldl_end = st.slider("VLDL end", vldl_start+1, profile_len-1, profile_len//4, key="vldl_e")
+        vldl_start = st.slider("VLDL start", 0, profile_len-1, vldl_start_val, key="vldl_s")
+        vldl_end = st.slider("VLDL end", vldl_start+1, profile_len-1, vldl_end_val, key="vldl_e")
 
-        idl_start = st.slider("IDL start", vldl_end, profile_len-1, profile_len//4, key="idl_s")
-        idl_end = st.slider("IDL end", idl_start+1, profile_len-1, profile_len//2, key="idl_e")
+        idl_start = st.slider("IDL start", vldl_end, profile_len-1, idl_start_val, key="idl_s")
+        idl_end = st.slider("IDL end", idl_start+1, profile_len-1, idl_end_val, key="idl_e")
 
-        ldl_start = st.slider("LDL start", idl_end, profile_len-1, profile_len//2, key="ldl_s")
-        ldl_end = st.slider("LDL end", ldl_start+1, profile_len-1, int(profile_len*0.75), key="ldl_e")
+        ldl_start = st.slider("LDL start", idl_end, profile_len-1, ldl_start_val, key="ldl_s")
+        ldl_end = st.slider("LDL end", ldl_start+1, profile_len-1, ldl_end_val, key="ldl_e")
 
-        hdl_start = st.slider("HDL start", ldl_end, profile_len-1, int(profile_len*0.75), key="hdl_s")
-        hdl_end = st.slider("HDL end", hdl_start+1, profile_len, profile_len, key="hdl_e")
+        hdl_start = st.slider("HDL start", ldl_end, profile_len-1, hdl_start_val, key="hdl_s")
+        hdl_end = st.slider("HDL end", hdl_start+1, profile_len, hdl_end_val, key="hdl_e")
         hdl_end = min(hdl_end, profile_len-1)
 
 # ============================================================================
@@ -197,7 +210,7 @@ with right_col:
             fig.add_vline(x=right, line_dash="dash", line_color=color, line_width=2, opacity=0.7)
 
         fig.update_layout(
-            title='Densitometry Profile',
+            title='Densitometry Profile (Click boundaries to adjust)',
             xaxis_title='Position (pixels)',
             yaxis_title='Optical Density',
             height=500,
@@ -205,7 +218,73 @@ with right_col:
             template='plotly_white'
         )
 
-        st.plotly_chart(fig, use_container_width=True)
+        # Interactive graph with boundary adjustment
+        selected_points = plotly_events(
+            fig,
+            click_event=True,
+            hover_event=False,
+            select_event=False,
+            key="profile_graph"
+        )
+
+        # Map for quick reference
+        boundaries_current = {
+            'vldl_start': vldl_start, 'vldl_end': vldl_end,
+            'idl_start': idl_start, 'idl_end': idl_end,
+            'ldl_start': ldl_start, 'ldl_end': ldl_end,
+            'hdl_start': hdl_start, 'hdl_end': hdl_end,
+        }
+
+        # Handle clicks on boundaries for interactive adjustment
+        if selected_points and len(selected_points) > 0:
+            clicked_x = int(selected_points[0]['x'])
+
+            # Find which boundary was clicked (within ~30 pixels tolerance)
+            closest_boundary = None
+            closest_distance = 30
+
+            for boundary_name, boundary_value in boundaries_current.items():
+                distance = abs(clicked_x - boundary_value)
+                if distance < closest_distance:
+                    closest_boundary = boundary_name
+                    closest_distance = distance
+
+            if closest_boundary:
+                st.session_state.selected_boundary = closest_boundary
+
+        # Show adjustment controls if a boundary is selected
+        if st.session_state.selected_boundary:
+            boundary_name = st.session_state.selected_boundary
+            category_name, bound_type = boundary_name.split('_')
+            category = category_name.upper()
+
+            st.divider()
+            st.markdown(f"### 📍 Adjust {category} {bound_type.upper()} Boundary")
+
+            current_val = boundaries_current[boundary_name]
+            col1, col2 = st.columns([4, 1])
+
+            with col1:
+                new_pos = st.slider(
+                    f"Position",
+                    min_value=0,
+                    max_value=profile_len-1,
+                    value=current_val,
+                    key=f"edit_{boundary_name}"
+                )
+
+            with col2:
+                if st.button("✓ Apply", key="apply_boundary", help="Apply this boundary change"):
+                    # Store the new value in session state for the left column sliders to pick up
+                    st.session_state[f"boundary_{boundary_name}"] = new_pos
+                    st.session_state.selected_boundary = None
+                    st.rerun()
+
+            if st.button("✕ Cancel", key="cancel_boundary"):
+                st.session_state.selected_boundary = None
+                st.rerun()
+
+            st.divider()
 
         # ---- GEL IMAGE ----
         st.subheader("Gel Tube Image")
