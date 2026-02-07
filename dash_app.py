@@ -616,4 +616,7 @@ def export_summary(n_clicks, tube_idx, processor_data, vldl, idl, ldl, hdl):
 
 
 if __name__ == '__main__':
-    app.run_server(debug=True, host='0.0.0.0', port=8050)
+    import os
+    port = int(os.environ.get('PORT', 8050))
+    debug = os.environ.get('ENVIRONMENT') != 'production'
+    app.run_server(debug=debug, host='0.0.0.0', port=port)

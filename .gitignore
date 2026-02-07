@@ -4,6 +4,9 @@ __pycache__/
 *$py.class
 *.so
 .Python
+env/
+venv/
+ENV/
 build/
 develop-eggs/
 dist/
@@ -20,11 +23,6 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual environments
-venv/
-ENV/
-env/
-
 # IDE
 .vscode/
 .idea/
@@ -34,19 +32,13 @@ env/
 
 # OS
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
-
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
 
 # Temporary files
 *.tmp
-test_*.tif
-debug_*
+.cache/
+.pytest_cache/
+
+# Environment variables
+.env
+.env.local
