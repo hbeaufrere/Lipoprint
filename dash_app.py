@@ -365,13 +365,21 @@ def load_image(contents):
      Output('vldl-slider', 'disabled'),
      Output('idl-slider', 'disabled'),
      Output('ldl-slider', 'disabled'),
-     Output('hdl-slider', 'disabled')],
+     Output('hdl-slider', 'disabled'),
+     Output('vldl-min-input', 'disabled'),
+     Output('vldl-max-input', 'disabled'),
+     Output('idl-min-input', 'disabled'),
+     Output('idl-max-input', 'disabled'),
+     Output('ldl-min-input', 'disabled'),
+     Output('ldl-max-input', 'disabled'),
+     Output('hdl-min-input', 'disabled'),
+     Output('hdl-max-input', 'disabled')],
     Input('processor-store', 'data')
 )
 def enable_controls(processor_data):
     """Enable controls when image is loaded"""
     enabled = processor_data is not None
-    return [not enabled] * 5
+    return [not enabled] * 13
 
 
 @callback(
@@ -409,12 +417,8 @@ def display_reference_tubes(processor_data):
                            mode='constant', constant_values=255)
             padded_tubes.append(padded)
 
-        # Create 3x4 grid (3 rows, 4 columns)
-        rows = []
-        for i in range(0, 12, 4):
-            row = np.hstack(padded_tubes[i:i+4])
-            rows.append(row)
-        montage = np.vstack(rows)
+        # Create vertical strip (12x1 arrangement)
+        montage = np.vstack(padded_tubes)
 
         # Encode to base64
         import io
