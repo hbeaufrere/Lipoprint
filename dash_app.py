@@ -661,6 +661,12 @@ def update_analysis(tube_idx, vldl, idl, ldl, hdl, processor_data, cholesterol_v
     # ---- Results Table ----
     band_aucs, percentages = analyzer.calculate_band_percentages()
 
+    # Calculate Total LDL (IDL + LDL)
+    idl_idx = next(i for i, b in enumerate(bands) if b['category'] == 'IDL')
+    ldl_idx = next(i for i, b in enumerate(bands) if b['category'] == 'LDL')
+    total_ldl_auc = band_aucs[idl_idx] + band_aucs[ldl_idx]
+    total_ldl_pct = percentages[idl_idx] + percentages[ldl_idx]
+
     results_data = []
     for band, auc, pct in zip(bands, band_aucs, percentages):
         row = {
@@ -673,6 +679,17 @@ def update_analysis(tube_idx, vldl, idl, ldl, hdl, processor_data, cholesterol_v
             cholesterol_mg = (pct / 100.0) * cholesterol_value
             row['Cholesterol (mg/dL)'] = f"{cholesterol_mg:.1f}"
         results_data.append(row)
+
+        # Insert Total LDL row after LDL
+        if band['category'] == 'LDL':
+            total_row = {
+                'Lipoprotein': 'Total LDL (IDL+LDL)',
+                'AUC': f"{total_ldl_auc:.2f}",
+                'Percentage': f"{total_ldl_pct:.1f}%"
+            }
+            if cholesterol_value and cholesterol_value > 0:
+                total_row['Cholesterol (mg/dL)'] = f"{(total_ldl_pct / 100.0) * cholesterol_value:.1f}"
+            results_data.append(total_row)
 
     df_results = pd.DataFrame(results_data)
 
@@ -705,11 +722,16 @@ def update_analysis(tube_idx, vldl, idl, ldl, hdl, processor_data, cholesterol_v
         for band, auc, pct in zip(bands, band_aucs, percentages):
             chol = (pct / 100.0) * cholesterol_value
             tsv_data += f"{band['category']}\t{auc:.2f}\t{pct:.1f}\t{chol:.1f}\n"
+            if band['category'] == 'LDL':
+                total_chol = (total_ldl_pct / 100.0) * cholesterol_value
+                tsv_data += f"Total LDL (IDL+LDL)\t{total_ldl_auc:.2f}\t{total_ldl_pct:.1f}\t{total_chol:.1f}\n"
         tsv_data += f"\nTotal Cholesterol\t\t\t{cholesterol_value}"
     else:
         tsv_data = "Lipoprotein\tAUC\tPercentage (%)\n"
         for band, auc, pct in zip(bands, band_aucs, percentages):
             tsv_data += f"{band['category']}\t{auc:.2f}\t{pct:.1f}\n"
+            if band['category'] == 'LDL':
+                tsv_data += f"Total LDL (IDL+LDL)\t{total_ldl_auc:.2f}\t{total_ldl_pct:.1f}\n"
 
     return fig_profile, fig_gel, table, metrics, tsv_data
 
@@ -749,6 +771,12 @@ def export_pdf(n_clicks, tube_idx, processor_data, vldl, idl, ldl, hdl, choleste
             processor_data, tube_idx, vldl, idl, ldl, hdl
         )
         band_aucs, percentages = analyzer.calculate_band_percentages()
+
+        # Calculate Total LDL (IDL + LDL)
+        idl_idx = next(i for i, b in enumerate(bands) if b['category'] == 'IDL')
+        ldl_idx = next(i for i, b in enumerate(bands) if b['category'] == 'LDL')
+        total_ldl_auc = band_aucs[idl_idx] + band_aucs[ldl_idx]
+        total_ldl_pct = percentages[idl_idx] + percentages[ldl_idx]
 
         def trim_top_25(start, end):
             return start + int((end - start) * 0.25)
@@ -869,6 +897,18 @@ def export_pdf(n_clicks, tube_idx, processor_data, vldl, idl, ldl, hdl, choleste
                 chol = (pct / 100.0) * cholesterol_value
                 pdf.cell(col_w, 7, f'{chol:.1f}', 1, 0, 'C')
             pdf.ln()
+
+            # Total LDL row after LDL
+            if band['category'] == 'LDL':
+                pdf.set_font('Helvetica', 'B', 10)
+                pdf.cell(col_w, 7, 'Total LDL (IDL+LDL)', 1, 0, 'C')
+                pdf.cell(col_w, 7, f'{total_ldl_auc:.2f}', 1, 0, 'C')
+                pdf.cell(col_w, 7, f'{total_ldl_pct:.1f}%', 1, 0, 'C')
+                if has_chol:
+                    total_chol = (total_ldl_pct / 100.0) * cholesterol_value
+                    pdf.cell(col_w, 7, f'{total_chol:.1f}', 1, 0, 'C')
+                pdf.ln()
+                pdf.set_font('Helvetica', '', 10)
 
         if has_chol:
             pdf.ln(3)
