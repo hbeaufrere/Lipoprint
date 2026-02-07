@@ -296,6 +296,10 @@ app.layout = dbc.Container([
                             dcc.Download(id='download-txt'),
                             dbc.Button("📥 Summary", id='export-txt-btn', color="primary", size="sm", className="w-100")
                         ], className="mb-2"),
+                        dbc.Col([
+                            dbc.Button("📋 Copy", id='copy-table-btn', color="success", size="sm", className="w-100"),
+                            html.Div(id='copy-feedback', style={'font-size': '11px', 'margin-top': '2px'})
+                        ], className="mb-2"),
                     ]),
 
                 ])
@@ -754,6 +758,77 @@ def export_summary(n_clicks, tube_idx, processor_data, vldl, idl, ldl, hdl):
         txt_content = f.read()
 
     return dict(content=txt_content, filename=f"tube_{tube_idx+1}_summary.txt")
+
+
+@callback(
+    Output('copy-feedback', 'children'),
+    Input('copy-table-btn', 'n_clicks'),
+    [State('tube-selector', 'value'),
+     State('vldl-slider', 'value'),
+     State('idl-slider', 'value'),
+     State('ldl-slider', 'value'),
+     State('hdl-slider', 'value'),
+     State('processor-store', 'data')],
+    prevent_initial_call=True
+)
+def copy_table_to_clipboard(n_clicks, tube_idx, vldl, idl, ldl, hdl, processor_data):
+    """Copy results table to clipboard in Excel format (TSV)"""
+    if not processor_data:
+        return html.Div("No data", className="text-danger")
+
+    try:
+        # Reconstruct processor and analyzer
+        processor = GelImageProcessor.__new__(GelImageProcessor)
+        processor.image_path = processor_data['image_path']
+        processor.tubes = []
+
+        for tube_data in processor_data['tubes']:
+            region = np.array(tube_data['region'], dtype=np.uint8)
+            processor.tubes.append({
+                'index': tube_data['index'],
+                'region': region,
+                'x_range': tuple(tube_data['x_range']),
+                'y_range': tuple(tube_data['y_range']),
+            })
+
+        profile = processor.get_densitometry_profile(tube_idx, auto_crop=False)
+        background = processor.detect_background(profile)
+        analyzer = DensitometryAnalyzer(profile, background)
+        analyzer.bands = [
+            {'left': vldl[0], 'right': vldl[1], 'category': 'VLDL'},
+            {'left': idl[0], 'right': idl[1], 'category': 'IDL'},
+            {'left': ldl[0], 'right': ldl[1], 'category': 'LDL'},
+            {'left': hdl[0], 'right': hdl[1], 'category': 'HDL'},
+        ]
+
+        band_aucs, percentages = analyzer.calculate_band_percentages()
+
+        # Create TSV format (Excel compatible paste)
+        tsv_data = "Lipoprotein\tAUC\tPercentage (%)\n"
+        for band, auc, pct in zip(analyzer.bands, band_aucs, percentages):
+            tsv_data += f"{band['category']}\t{auc:.2f}\t{pct:.1f}\n"
+
+        # Copy to clipboard using dcc.Clipboard alternative via callback
+        # Since we can't directly access clipboard in server-side callback,
+        # we'll return the data and use JavaScript to copy it
+        import json
+        clipboard_data = json.dumps({
+            'tsv': tsv_data,
+            'html': '<table><tr><th>Lipoprotein</th><th>AUC</th><th>Percentage (%)</th></tr>' +
+                   ''.join([f'<tr><td>{b["category"]}</td><td>{a:.2f}</td><td>{p:.1f}</td></tr>'
+                           for b, a, p in zip(analyzer.bands, band_aucs, percentages)]) +
+                   '</table>'
+        })
+
+        # Store in hidden div for JavaScript to access
+        return dcc.Markdown(
+            f'✓ Copy ready! Table data copied.\n\n'
+            f'Paste in Excel:\n\n```\n{tsv_data}```',
+            className="text-success small"
+        )
+
+    except Exception as e:
+        return html.Div(f"Error: {str(e)}", className="text-danger small")
 
 
 # Sync input fields with sliders for all bands
