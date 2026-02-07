@@ -38,19 +38,39 @@ class GelImageProcessor:
         # So: OD = 1 - (normalized_pixel) = 1 - (gray/255)
         self.inverted = self.gray_image
 
-    def extract_tubes(self, num_tubes=12, tubes_per_row=20):
+    def extract_tubes(self, num_tubes=12, tubes_per_row=20, roi=None):
         """
-        AUTO-DETECT and extract white tube rectangles from gel image.
+        Extract white tube rectangles from gel image.
 
-        Finds white vertical columns (tubes) by analyzing brightness.
-        Uses first 12 tubes (image already cropped to top half).
-        Crops each tube horizontally to remove black edge backgrounds.
+        Can use fixed ROI (Region of Interest) for consistency with Lipoware,
+        or AUTO-DETECT tubes if ROI not provided.
+
+        Args:
+            num_tubes: Number of tubes to extract (default: 12)
+            tubes_per_row: Expected tubes per row (default: 20)
+            roi: Optional tuple (left, top, width, height) to define fixed ROI.
+                 If provided, tubes are extracted within this region.
+                 If None, uses auto-detection.
         """
         height, width = self.gray_image.shape  # Already cropped to top half
 
+        # If ROI provided, crop to it first
+        if roi is not None:
+            roi_left, roi_top, roi_width, roi_height = roi
+            roi_region = self.gray_image[roi_top:roi_top+roi_height, roi_left:roi_left+roi_width]
+            working_image = roi_region
+            roi_offset_x = roi_left
+            roi_offset_y = roi_top
+        else:
+            working_image = self.gray_image
+            roi_offset_x = 0
+            roi_offset_y = 0
+
+        region_height, region_width = working_image.shape
+
         # Find white columns by averaging pixel intensity vertically
         # White tubes have HIGH gray values (close to 255)
-        column_brightness = np.mean(self.gray_image, axis=0)
+        column_brightness = np.mean(working_image, axis=0)
 
         # Threshold to find white regions (tubes are bright, background is dark)
         # White tubes should have average > 150
@@ -76,10 +96,10 @@ class GelImageProcessor:
         for tube_idx in range(min(num_tubes, len(tube_boundaries))):
             x_start, x_end = tube_boundaries[tube_idx]
             y_start = 0
-            y_end = height  # Use full height (already cropped to top half)
+            y_end = region_height  # Use full height of working region
 
             # Extract tube region - crop horizontally to remove black edges
-            tube_region_full = self.gray_image[y_start:y_end, x_start:x_end]
+            tube_region_full = working_image[y_start:y_end, x_start:x_end]
 
             # Find white rows (remove black top/bottom edges)
             row_brightness = np.mean(tube_region_full, axis=1)
@@ -94,12 +114,14 @@ class GelImageProcessor:
             else:
                 tube_region = tube_region_full
 
+            # Store with absolute coordinates (relative to full image, not ROI)
             self.tubes.append({
                 'index': tube_idx,
                 'region': tube_region,
-                'y_range': (y_start, y_end),
-                'x_range': (x_start, x_end),
-                'original_coords': (y_start, y_end, x_start, x_end)
+                'y_range': (y_start + roi_offset_y, y_end + roi_offset_y),
+                'x_range': (x_start + roi_offset_x, x_end + roi_offset_x),
+                'original_coords': (y_start + roi_offset_y, y_end + roi_offset_y,
+                                    x_start + roi_offset_x, x_end + roi_offset_x)
             })
 
         return self.tubes

@@ -31,7 +31,7 @@ if 'current_tube' not in st.session_state:
 
 
 def load_image(uploaded_file):
-    """Load gel image and extract 12 tubes."""
+    """Load gel image and extract 12 tubes using Lipoware ROI."""
     file_ext = '.tif' if uploaded_file.name.lower().endswith(('.tif', '.tiff')) else '.jpg'
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp:
@@ -40,7 +40,10 @@ def load_image(uploaded_file):
 
     try:
         processor = GelImageProcessor(tmp_path)
-        processor.extract_tubes(num_tubes=12, tubes_per_row=20)
+        # Use fixed ROI from Lipoware: top-left (52, 353), width=650, height=313
+        # This ROI contains all 12 tubes in the first row
+        lipoware_roi = (52, 353, 650, 313)
+        processor.extract_tubes(num_tubes=12, tubes_per_row=20, roi=lipoware_roi)
         return processor
     except Exception as e:
         st.error(f"Failed to load image: {str(e)}")
