@@ -222,11 +222,15 @@ with right_col:
             yaxis_title='Optical Density',
             height=500,
             hovermode='x unified',
-            template='plotly_white'
+            template='plotly_white',
+            dragmode=False if PLOTLY_EVENTS_AVAILABLE else 'zoom',  # Disable zoom when using clicks
+            xaxis=dict(fixedrange=False),
+            yaxis=dict(fixedrange=False),
         )
 
         # Interactive graph with boundary adjustment (if available)
         if PLOTLY_EVENTS_AVAILABLE:
+            st.write("💡 *Click on a colored boundary line to adjust it*")
             selected_points = plotly_events(
                 fig,
                 click_event=True,
@@ -360,11 +364,14 @@ with right_col:
                 height=350,
                 hovermode='closest',
                 template='plotly_white',
-                yaxis=dict(autorange='reversed')  # Match image orientation
+                dragmode=False if PLOTLY_EVENTS_AVAILABLE else 'zoom',  # Disable zoom when using clicks
+                yaxis=dict(autorange='reversed'),  # Match image orientation
+                xaxis=dict(fixedrange=False),
             )
 
             # Display gel image with interactive boundaries
             if PLOTLY_EVENTS_AVAILABLE:
+                st.write("💡 *Click on a colored band line to adjust it*")
                 gel_clicks = plotly_events(
                     fig_gel,
                     click_event=True,
