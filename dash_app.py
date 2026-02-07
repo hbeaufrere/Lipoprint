@@ -94,6 +94,7 @@ app.layout = dbc.Container([
                             value=[27, 48],
                             marks={0: '0', 313: '313'},
                             disabled=True,
+                            updatemode='drag',
                             tooltip={"placement": "bottom", "always_visible": True}
                         )
                     ], className="mb-3"),
@@ -106,6 +107,7 @@ app.layout = dbc.Container([
                             value=[48, 65],
                             marks={0: '0', 313: '313'},
                             disabled=True,
+                            updatemode='drag',
                             tooltip={"placement": "bottom", "always_visible": True}
                         )
                     ], className="mb-3"),
@@ -118,6 +120,7 @@ app.layout = dbc.Container([
                             value=[68, 120],
                             marks={0: '0', 313: '313'},
                             disabled=True,
+                            updatemode='drag',
                             tooltip={"placement": "bottom", "always_visible": True}
                         )
                     ], className="mb-3"),
@@ -130,6 +133,7 @@ app.layout = dbc.Container([
                             value=[260, 300],
                             marks={0: '0', 313: '313'},
                             disabled=True,
+                            updatemode='drag',
                             tooltip={"placement": "bottom", "always_visible": True}
                         )
                     ], className="mb-3"),
