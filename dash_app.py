@@ -79,6 +79,11 @@ app.layout = dbc.Container([
     dbc.Row([
         # LEFT COLUMN - Controls
         dbc.Col([
+            # Logo
+            html.Div(
+                html.Img(src='/assets/logo.jpg', style={'max-width': '100%', 'max-height': '120px'}),
+                style={'text-align': 'center', 'margin-bottom': '10px'}
+            ),
             dbc.Card([
                 dbc.CardBody([
                     html.H4("Image Upload", className="card-title"),
@@ -788,6 +793,12 @@ def export_pdf(n_clicks, tube_idx, processor_data, vldl, idl, ldl, hdl, choleste
         # --- Create PDF ---
         pdf = FPDF()
         pdf.add_page()
+
+        # Logo
+        logo_path = Path(__file__).parent / 'assets' / 'logo.jpg'
+        if logo_path.exists():
+            pdf.image(str(logo_path), x=80, w=50)
+            pdf.ln(3)
 
         # Title
         pdf.set_font('Helvetica', 'B', 18)
