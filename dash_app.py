@@ -299,7 +299,7 @@ app.layout = dbc.Container([
                     # Gel Image
                     dcc.Graph(
                         id='gel-graph',
-                        style={'height': '350px'}
+                        style={'height': '200px'}
                     ),
 
                     html.Hr(),
@@ -608,7 +608,8 @@ def update_analysis(tube_idx, vldl, idl, ldl, hdl, processor_data, cholesterol_v
         yaxis_title='Depth',
         template='plotly_white',
         hovermode='closest',
-        height=250
+        height=180,
+        margin=dict(l=40, r=20, t=30, b=30)
     )
 
     # ---- Results Table ----
