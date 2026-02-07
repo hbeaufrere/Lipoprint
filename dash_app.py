@@ -120,7 +120,7 @@ app.layout = dbc.Container([
                     html.Label("Band Limits (pixels):", className="fw-bold"),
                     html.Br(),
 
-                    html.Label("VLDL:", className="fw-bold text-danger"),
+                    html.Label("VLDL:", className="fw-bold", style={'color': '#FFD700'}),
                     dbc.Row([
                         dbc.Col([
                             dcc.RangeSlider(
@@ -158,7 +158,7 @@ app.layout = dbc.Container([
                         ], width=3),
                     ], className="mb-3"),
 
-                    html.Label("IDL:", className="fw-bold text-warning"),
+                    html.Label("IDL:", className="fw-bold", style={'color': '#FF8C00'}),
                     dbc.Row([
                         dbc.Col([
                             dcc.RangeSlider(
@@ -196,7 +196,7 @@ app.layout = dbc.Container([
                         ], width=3),
                     ], className="mb-3"),
 
-                    html.Label("LDL:", className="fw-bold text-warning"),
+                    html.Label("LDL:", className="fw-bold", style={'color': '#FF0000'}),
                     dbc.Row([
                         dbc.Col([
                             dcc.RangeSlider(
@@ -234,7 +234,7 @@ app.layout = dbc.Container([
                         ], width=3),
                     ], className="mb-3"),
 
-                    html.Label("HDL:", className="fw-bold text-info"),
+                    html.Label("HDL:", className="fw-bold", style={'color': '#4ECDC4'}),
                     dbc.Row([
                         dbc.Col([
                             dcc.RangeSlider(
@@ -576,7 +576,7 @@ def update_analysis(tube_idx, vldl, idl, ldl, hdl, processor_data, cholesterol_v
         fig_profile.add_vline(x=right, line_dash="dash", line_color=color, line_width=2, opacity=0.7)
 
     fig_profile.update_layout(
-        title=f'Tube {tube_idx+1} - Densitometry Profile (Drag boundaries on graph)',
+        title=f'Tube {tube_idx+1} - Densitometry Profile',
         xaxis_title='Position (pixels)',
         yaxis_title='Optical Density',
         hovermode='x unified',
