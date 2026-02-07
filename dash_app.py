@@ -94,7 +94,7 @@ app.layout = dbc.Container([
                             value=[27, 48],
                             marks={0: '0', 313: '313'},
                             disabled=True,
-                            updatemode='drag',
+                            
                             tooltip={"placement": "bottom", "always_visible": True}
                         )
                     ], className="mb-3"),
@@ -107,7 +107,7 @@ app.layout = dbc.Container([
                             value=[48, 65],
                             marks={0: '0', 313: '313'},
                             disabled=True,
-                            updatemode='drag',
+                            
                             tooltip={"placement": "bottom", "always_visible": True}
                         )
                     ], className="mb-3"),
@@ -120,7 +120,7 @@ app.layout = dbc.Container([
                             value=[68, 120],
                             marks={0: '0', 313: '313'},
                             disabled=True,
-                            updatemode='drag',
+                            
                             tooltip={"placement": "bottom", "always_visible": True}
                         )
                     ], className="mb-3"),
@@ -133,7 +133,7 @@ app.layout = dbc.Container([
                             value=[260, 300],
                             marks={0: '0', 313: '313'},
                             disabled=True,
-                            updatemode='drag',
+                            
                             tooltip={"placement": "bottom", "always_visible": True}
                         )
                     ], className="mb-3"),
@@ -206,7 +206,6 @@ app.layout = dbc.Container([
     # Hidden stores for state management
     dcc.Store(id='processor-store', storage_type='memory'),
     dcc.Store(id='analyzer-store', storage_type='memory'),
-    dcc.Store(id='slider-values-store', storage_type='memory'),
 
 ], fluid=True, className="p-4")
 
@@ -318,26 +317,6 @@ def display_reference_tubes(processor_data):
         )
     except Exception as e:
         return html.Div(f"Error: {str(e)}", className="text-danger small")
-
-
-@callback(
-    Output('slider-values-store', 'data'),
-    [Input('tube-selector', 'value'),
-     Input('vldl-slider', 'value'),
-     Input('idl-slider', 'value'),
-     Input('ldl-slider', 'value'),
-     Input('hdl-slider', 'value')],
-    prevent_initial_call=True
-)
-def store_slider_values(tube_idx, vldl, idl, ldl, hdl):
-    """Store slider values for debounced processing"""
-    return {
-        'tube_idx': tube_idx,
-        'vldl': vldl,
-        'idl': idl,
-        'ldl': ldl,
-        'hdl': hdl
-    }
 
 
 @callback(
