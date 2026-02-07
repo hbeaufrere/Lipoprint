@@ -200,6 +200,8 @@ app.layout = dbc.Container([
     # Hidden stores for state management
     dcc.Store(id='processor-store', storage_type='memory'),
     dcc.Store(id='analyzer-store', storage_type='memory'),
+    dcc.Store(id='slider-values-store', storage_type='memory'),
+    dcc.Interval(id='update-interval', interval=300),  # 300ms debounce
 
 ], fluid=True, className="p-4")
 
@@ -269,24 +271,48 @@ def enable_controls(processor_data):
 
 
 @callback(
-    [Output('profile-graph', 'figure'),
-     Output('gel-graph', 'figure'),
-     Output('results-table', 'children'),
-     Output('metrics-row', 'children')],
+    Output('slider-values-store', 'data'),
     [Input('tube-selector', 'value'),
      Input('vldl-slider', 'value'),
      Input('idl-slider', 'value'),
      Input('ldl-slider', 'value'),
-     Input('hdl-slider', 'value'),
-     Input('profile-graph', 'relayoutData')],
+     Input('hdl-slider', 'value')],
+    prevent_initial_call=True
+)
+def store_slider_values(tube_idx, vldl, idl, ldl, hdl):
+    """Store slider values for debounced processing"""
+    return {
+        'tube_idx': tube_idx,
+        'vldl': vldl,
+        'idl': idl,
+        'ldl': ldl,
+        'hdl': hdl
+    }
+
+
+@callback(
+    [Output('profile-graph', 'figure'),
+     Output('gel-graph', 'figure'),
+     Output('results-table', 'children'),
+     Output('metrics-row', 'children')],
+    [Input('update-interval', 'n_intervals'),
+     Input('processor-store', 'data')],
+    State('slider-values-store', 'data'),
     State('processor-store', 'data'),
     prevent_initial_call=True
 )
-def update_analysis(tube_idx, vldl, idl, ldl, hdl, relayout_data, processor_data):
-    """Update all visualizations and results"""
+def update_analysis(n_intervals, processor_changed, slider_data, processor_data):
+    """Update all visualizations and results (debounced)"""
 
-    if not processor_data:
+    if not processor_data or not slider_data:
         return {}, {}, "Load an image to start", []
+
+    # Extract slider values
+    tube_idx = slider_data['tube_idx']
+    vldl = slider_data['vldl']
+    idl = slider_data['idl']
+    ldl = slider_data['ldl']
+    hdl = slider_data['hdl']
 
     # Reconstruct processor
     processor = GelImageProcessor.__new__(GelImageProcessor)
@@ -308,11 +334,6 @@ def update_analysis(tube_idx, vldl, idl, ldl, hdl, relayout_data, processor_data
     profile = processor.get_densitometry_profile(tube_idx, auto_crop=False)
     background = processor.detect_background(profile)
     profile_len = len(profile)
-
-    # Handle dragging on graph
-    if relayout_data and 'shapes' in relayout_data:
-        # Update boundaries from dragged shapes
-        pass
 
     # Create bands
     bands = [
