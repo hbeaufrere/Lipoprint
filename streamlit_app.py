@@ -122,7 +122,7 @@ def display_densitometry_plot(profile, peaks, background, bands, colors, slider_
             hovertemplate='Peak at: %{x}<br>OD: %{y:.4f}<extra></extra>'
         ))
 
-    # Plot bands
+    # Plot bands with colored AUC areas
     if bands:
         for i, band in enumerate(bands):
             left = band['left']
@@ -139,20 +139,21 @@ def display_densitometry_plot(profile, peaks, background, bands, colors, slider_
             band_x = x[left_trimmed:right+1]
             band_y = profile[left_trimmed:right+1]
 
-            # Add filled area with category color
+            # Add filled area with category color (AUC - Area Under Curve)
             fig.add_trace(go.Scatter(
                 x=band_x, y=band_y,
-                fill='tonexty',
+                fill='tozeroy',  # Fill to y=0 axis
                 fillcolor=color,
-                opacity=0.5,
-                line=dict(color=color, width=0),
+                opacity=0.35,
+                line=dict(color=color, width=2.5),
                 name=band_name,
-                hovertemplate='%{fullData.name}<br>Position: %{x}<br>OD: %{y:.4f}<extra></extra>'
+                hovertemplate=f'<b>{band_name}</b><br>Position: %{{x}}<br>OD: %{{y:.4f}}<extra></extra>',
+                showlegend=True
             ))
 
             # Add boundary lines (on trimmed boundaries)
-            fig.add_vline(x=left_trimmed, line_dash="dash", line_color=color, line_width=2)
-            fig.add_vline(x=right, line_dash="dash", line_color=color, line_width=2)
+            fig.add_vline(x=left_trimmed, line_dash="dash", line_color=color, line_width=2, opacity=0.7)
+            fig.add_vline(x=right, line_dash="dash", line_color=color, line_width=2, opacity=0.7)
 
     # Plot temporary slider boundaries (when adjusting)
     if slider_boundaries:
@@ -317,16 +318,16 @@ def main():
     st.plotly_chart(fig, use_container_width=True)
 
     # Display gel tube image horizontally below the graph
-    st.write("### 🧫 Gel Tube Image (Corresponding Depth)")
+    st.write("### 🧫 Gel Tube Image with Band Boundaries")
     try:
         tube_info = processor.tubes[st.session_state.current_tube]
         tube_region = tube_info['region']
 
-        # Convert to 8-bit image for display
-        if np.max(tube_region) > 0:
-            tube_display = np.clip((tube_region / np.max(tube_region)) * 255, 0, 255).astype(np.uint8)
-        else:
-            tube_display = tube_region.astype(np.uint8)
+        # Enhance contrast for better visualization
+        tube_normalized = tube_region.astype(float)
+        tube_min = np.percentile(tube_normalized, 5)
+        tube_max = np.percentile(tube_normalized, 95)
+        tube_display = np.clip((tube_normalized - tube_min) / (tube_max - tube_min + 0.001) * 255, 0, 255).astype(np.uint8)
 
         # Get dimensions
         tube_height, tube_width = tube_display.shape  # (depth, width)
@@ -338,15 +339,16 @@ def main():
         # Transpose the image so depth becomes the horizontal axis
         tube_display_transposed = np.transpose(tube_display_trimmed)  # Now (width, depth)
 
-        # Create horizontal figure - wider to show full tube
-        fig_width = 12
-        fig_height = 1.5
+        # Create horizontal figure - larger for better visibility
+        fig_width = 14
+        fig_height = 2.5
 
         fig_tube = plt.figure(figsize=(fig_width, fig_height))
         ax_tube = fig_tube.add_subplot(111)
 
-        # Display the transposed image
-        ax_tube.imshow(tube_display_transposed, cmap='gray', aspect='auto', origin='upper')
+        # Display the transposed image with contrast enhancement
+        im = ax_tube.imshow(tube_display_transposed, cmap='gray', aspect='auto', origin='upper', interpolation='nearest')
+        plt.colorbar(im, ax=ax_tube, label='Intensity')
 
         # Draw band boundaries on gel image
         if analyzer.bands:
@@ -478,23 +480,29 @@ def main():
 
         st.plotly_chart(fig_bar, use_container_width=True)
 
-        # Lipoprotein profile percentage table
+        # Lipoprotein profile percentage table - PROMINENT DISPLAY
         st.write("---")
-        st.write("### 📊 Lipoprotein profile (%)")
 
-        # Create simple text display of percentages
-        profile_text = ""
+        # Create a prominent table with percentages
+        table_data = []
         for i, (band, pct) in enumerate(zip(analyzer.bands, percentages)):
             band_name = band.get('category', f'Band {i+1}')
-            profile_text += f"**{band_name}:** {pct:.1f}%  \n"
+            table_data.append([band_name, f"{pct:.1f}%"])
 
-        st.markdown(profile_text)
+        # Display as DataFrame for clear table format
+        import pandas as pd
+        df_percentages = pd.DataFrame(table_data, columns=['Lipoprotein', 'Percentage'])
 
-        # Also display as metrics in columns
-        profile_cols = st.columns(len(analyzer.bands))
+        st.write("### 📊 Lipoprotein profile (%)")
+        st.dataframe(df_percentages, use_container_width=False, hide_index=True)
+
+        # Also display as metrics in columns for visual prominence
+        st.write("")
+        metric_cols = st.columns(len(analyzer.bands))
         for idx, (band, pct) in enumerate(zip(analyzer.bands, percentages)):
-            band_name = band.get('category', f'Band {i+1}')
-            with profile_cols[idx]:
+            band_name = band.get('category', f'Band {idx+1}')
+            category_colors_map = {'VLDL': '#FF6B6B', 'IDL': '#FFA07A', 'LDL': '#FFD700', 'HDL': '#4ECDC4'}
+            with metric_cols[idx]:
                 st.metric(band_name, f"{pct:.1f}%")
 
     # Export section
