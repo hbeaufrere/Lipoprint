@@ -177,16 +177,16 @@ app.layout = dbc.Container([
                         dbc.Col([
                             dcc.Download(id='download-csv'),
                             dbc.Button("📥 CSV", id='export-csv-btn', color="primary", size="sm", className="w-100")
-                        ]),
+                        ], className="mb-2"),
                         dbc.Col([
                             dcc.Download(id='download-json'),
                             dbc.Button("📥 JSON", id='export-json-btn', color="primary", size="sm", className="w-100")
-                        ]),
+                        ], className="mb-2"),
                         dbc.Col([
                             dcc.Download(id='download-txt'),
                             dbc.Button("📥 Summary", id='export-txt-btn', color="primary", size="sm", className="w-100")
-                        ]),
-                    ], gap=2),
+                        ], className="mb-2"),
+                    ]),
 
                 ])
             ])
