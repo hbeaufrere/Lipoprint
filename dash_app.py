@@ -192,6 +192,12 @@ app.layout = dbc.Container([
                         ], className="mb-2"),
                     ]),
 
+                    html.Hr(),
+
+                    # Reference Tubes Image
+                    html.Label("12 Tubes Reference:", className="fw-bold text-muted"),
+                    html.Div(id='reference-tubes', style={'text-align': 'center', 'margin-top': '10px'})
+
                 ])
             ])
         ], width=9),
@@ -271,6 +277,51 @@ def enable_controls(processor_data):
 
 
 @callback(
+    Output('reference-tubes', 'children'),
+    Input('processor-store', 'data')
+)
+def display_reference_tubes(processor_data):
+    """Display all 12 tubes as reference"""
+    if not processor_data:
+        return html.Div("Load image to see reference", className="text-muted small")
+
+    try:
+        # Create a montage of all 12 tubes
+        tubes_data = processor_data['tubes']
+
+        if not tubes_data:
+            return html.Div("No tubes found", className="text-muted small")
+
+        # Stack tubes horizontally
+        tube_images = []
+        for tube_data in tubes_data:
+            region = np.array(tube_data['region'], dtype=np.uint8)
+            tube_images.append(region)
+
+        # Create horizontal strip: rotate each tube 90° and stack
+        rotated_tubes = [np.rot90(t) for t in tube_images]
+
+        # Stack all tubes horizontally with small gaps
+        montage = np.hstack(rotated_tubes)
+
+        # Encode to base64 for display
+        import io
+        from PIL import Image
+        img_pil = Image.fromarray(montage)
+        buf = io.BytesIO()
+        img_pil.save(buf, format='PNG')
+        buf.seek(0)
+        img_base64 = base64.b64encode(buf.getvalue()).decode()
+
+        return html.Img(
+            src=f'data:image/png;base64,{img_base64}',
+            style={'width': '100%', 'max-width': '300px', 'border': '1px solid #ccc'}
+        )
+    except Exception as e:
+        return html.Div(f"Error: {str(e)}", className="text-danger small")
+
+
+@callback(
     Output('slider-values-store', 'data'),
     [Input('tube-selector', 'value'),
      Input('vldl-slider', 'value'),
@@ -304,15 +355,23 @@ def store_slider_values(tube_idx, vldl, idl, ldl, hdl):
 def update_analysis(n_intervals, processor_changed, slider_data, processor_data):
     """Update all visualizations and results (debounced)"""
 
-    if not processor_data or not slider_data:
+    if not processor_data:
         return {}, {}, "Load an image to start", []
 
-    # Extract slider values
-    tube_idx = slider_data['tube_idx']
-    vldl = slider_data['vldl']
-    idl = slider_data['idl']
-    ldl = slider_data['ldl']
-    hdl = slider_data['hdl']
+    # Use slider data if available, otherwise use defaults
+    if slider_data:
+        tube_idx = slider_data['tube_idx']
+        vldl = slider_data['vldl']
+        idl = slider_data['idl']
+        ldl = slider_data['ldl']
+        hdl = slider_data['hdl']
+    else:
+        # Default values
+        tube_idx = 0
+        vldl = [27, 48]
+        idl = [48, 65]
+        ldl = [68, 120]
+        hdl = [260, 300]
 
     # Reconstruct processor
     processor = GelImageProcessor.__new__(GelImageProcessor)
@@ -403,57 +462,31 @@ def update_analysis(n_intervals, processor_changed, slider_data, processor_data)
         height=500
     )
 
-    # ---- Create Gel Image ----
+    # ---- Create Gel Image (Raw ROI) ----
     tube_info = processor.tubes[tube_idx]
     tube_region = tube_info['region']
 
-    # Enhance contrast
-    tube_norm = tube_region.astype(float)
-    vmin = np.percentile(tube_norm, 5)
-    vmax = np.percentile(tube_norm, 95)
-    tube_display = np.clip((tube_norm - vmin) / (vmax - vmin + 1e-6) * 255, 0, 255).astype(np.uint8)
-
-    depth, width = tube_display.shape
-    trim_offset = int(depth * 0.25)
-    tube_trimmed = tube_display[trim_offset:, :]
-    tube_height_trimmed = tube_trimmed.shape[0]
+    # Display raw tube data (no enhancement, just transpose for horizontal view)
+    tube_display = np.rot90(tube_region)  # Rotate 90 degrees for horizontal display
 
     fig_gel = go.Figure()
 
-    # Gel image
+    # Gel image heatmap
     fig_gel.add_trace(go.Heatmap(
-        z=tube_trimmed,
+        z=tube_display,
         colorscale='Gray',
         showscale=False,
-        hovertemplate='Depth: %{y}<br>Width: %{x}<br>Intensity: %{z}<extra></extra>',
-        name='Gel'
+        hovertemplate='X: %{x}<br>Y: %{y}<br>Intensity: %{z}<extra></extra>',
+        name='Tube ROI'
     ))
 
-    # Band boundaries
-    for band in bands:
-        left = band['left']
-        right = band['right']
-        category = band['category']
-        color = COLORS[category]
-
-        left_trim = trim_top_25(left, right)
-        left_adj = left_trim - trim_offset
-        right_adj = right - trim_offset
-
-        if 0 <= left_adj < tube_height_trimmed:
-            fig_gel.add_hline(y=left_adj, line_color=color, line_width=3, line_dash="dash", opacity=0.8)
-
-        if 0 <= right_adj < tube_height_trimmed:
-            fig_gel.add_hline(y=right_adj, line_color=color, line_width=3, line_dash="dash", opacity=0.8)
-
     fig_gel.update_layout(
-        title=f'Tube {tube_idx+1} - Gel Image',
-        xaxis_title='Width (pixels)',
-        yaxis_title='Depth (trimmed 25%)',
+        title=f'Tube {tube_idx+1} - ROI (Raw)',
+        xaxis_title='Width',
+        yaxis_title='Depth',
         template='plotly_white',
         hovermode='closest',
-        yaxis=dict(autorange='reversed'),
-        height=350
+        height=250
     )
 
     # ---- Results Table ----
