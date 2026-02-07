@@ -685,25 +685,27 @@ def export_pdf(n_clicks, tube_idx, processor_data, vldl, idl, ldl, hdl, choleste
         return None
 
     try:
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        import matplotlib.colors as mcolors
         from fpdf import FPDF
         from PIL import Image
+        import os
 
         processor, analyzer, profile, background, bands = _reconstruct_analysis(
             processor_data, tube_idx, vldl, idl, ldl, hdl
         )
         band_aucs, percentages = analyzer.calculate_band_percentages()
 
-        # --- Build the densitometry profile figure ---
-        x = np.arange(len(profile))
-        fig_profile = go.Figure()
-        fig_profile.add_trace(go.Scatter(
-            x=x, y=profile, mode='lines', name='Profile',
-            line=dict(color='black', width=2.5)
-        ))
-        fig_profile.add_hline(y=background, line_dash="dash", line_color="gray")
-
         def trim_top_25(start, end):
             return start + int((end - start) * 0.25)
+
+        # --- Densitometry profile chart via matplotlib ---
+        x = np.arange(len(profile))
+        fig, ax = plt.subplots(figsize=(8, 4))
+        ax.plot(x, profile, color='black', linewidth=1.5, label='Profile')
+        ax.axhline(y=background, color='gray', linestyle='--', linewidth=1, label='Background')
 
         for band in bands:
             left = band['left']
@@ -713,41 +715,27 @@ def export_pdf(n_clicks, tube_idx, processor_data, vldl, idl, ldl, hdl, choleste
             lt = trim_top_25(left, right)
             band_x = x[lt:right+1]
             band_y = profile[lt:right+1]
-            fig_profile.add_trace(go.Scatter(
-                x=band_x, y=band_y, fill='tozeroy', fillcolor=color,
-                opacity=0.35, line=dict(color=color, width=2), name=cat
-            ))
-            fig_profile.add_vline(x=lt, line_dash="dash", line_color=color, line_width=2, opacity=0.7)
-            fig_profile.add_vline(x=right, line_dash="dash", line_color=color, line_width=2, opacity=0.7)
+            ax.fill_between(band_x, 0, band_y, color=color, alpha=0.35, label=cat)
+            ax.axvline(x=lt, color=color, linestyle='--', linewidth=1, alpha=0.7)
+            ax.axvline(x=right, color=color, linestyle='--', linewidth=1, alpha=0.7)
 
-        fig_profile.update_layout(
-            title=f'Tube {tube_idx+1} - Densitometry Profile',
-            xaxis_title='Position (pixels)', yaxis_title='Optical Density',
-            template='plotly_white', width=800, height=400
-        )
-
-        # --- Build the gel tube figure ---
-        tube_region = processor.tubes[tube_idx]['region']
-        tube_display = np.rot90(tube_region)
-        fig_gel = go.Figure()
-        fig_gel.add_trace(go.Heatmap(
-            z=tube_display, colorscale='Gray', showscale=False, name='Tube ROI'
-        ))
-        fig_gel.update_layout(
-            title=f'Tube {tube_idx+1} - ROI',
-            template='plotly_white', width=800, height=250
-        )
-
-        # --- Render figures to PNG ---
-        profile_png = fig_profile.to_image(format='png', engine='kaleido')
-        gel_png = fig_gel.to_image(format='png', engine='kaleido')
+        ax.set_title(f'Tube {tube_idx+1} - Densitometry Profile')
+        ax.set_xlabel('Position (pixels)')
+        ax.set_ylabel('Optical Density')
+        ax.legend(loc='upper right', fontsize=8)
+        ax.set_xlim(0, len(profile))
+        fig.tight_layout()
 
         profile_tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
-        profile_tmp.write(profile_png)
-        profile_tmp.close()
+        fig.savefig(profile_tmp.name, dpi=150, bbox_inches='tight')
+        plt.close(fig)
 
+        # --- Tube ROI image via PIL ---
+        tube_region = processor.tubes[tube_idx]['region']
+        tube_display = np.rot90(tube_region)
+        img_pil = Image.fromarray(tube_display.astype(np.uint8))
         gel_tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
-        gel_tmp.write(gel_png)
+        img_pil.save(gel_tmp.name, format='PNG')
         gel_tmp.close()
 
         # --- Create PDF ---
@@ -769,6 +757,8 @@ def export_pdf(n_clicks, tube_idx, processor_data, vldl, idl, ldl, hdl, choleste
         pdf.ln(3)
 
         # Tube image
+        pdf.set_font('Helvetica', 'B', 12)
+        pdf.cell(0, 8, f'Tube {tube_idx+1} - ROI', ln=True)
         pdf.image(gel_tmp.name, x=10, w=190)
         pdf.ln(5)
 
@@ -810,7 +800,6 @@ def export_pdf(n_clicks, tube_idx, processor_data, vldl, idl, ldl, hdl, choleste
         pdf_bytes = pdf.output()
 
         # Cleanup temp files
-        import os
         os.unlink(profile_tmp.name)
         os.unlink(gel_tmp.name)
 
@@ -819,6 +808,8 @@ def export_pdf(n_clicks, tube_idx, processor_data, vldl, idl, ldl, hdl, choleste
 
     except Exception as e:
         print(f"PDF export error: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 
