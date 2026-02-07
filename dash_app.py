@@ -94,7 +94,6 @@ app.layout = dbc.Container([
                             value=[27, 48],
                             marks={0: '0', 313: '313'},
                             disabled=True,
-                            updatemode='drag',
                             tooltip={"placement": "bottom", "always_visible": True}
                         )
                     ], className="mb-3"),
@@ -107,7 +106,6 @@ app.layout = dbc.Container([
                             value=[48, 65],
                             marks={0: '0', 313: '313'},
                             disabled=True,
-                            updatemode='drag',
                             tooltip={"placement": "bottom", "always_visible": True}
                         )
                     ], className="mb-3"),
@@ -120,7 +118,6 @@ app.layout = dbc.Container([
                             value=[68, 120],
                             marks={0: '0', 313: '313'},
                             disabled=True,
-                            updatemode='drag',
                             tooltip={"placement": "bottom", "always_visible": True}
                         )
                     ], className="mb-3"),
@@ -133,7 +130,6 @@ app.layout = dbc.Container([
                             value=[260, 300],
                             marks={0: '0', 313: '313'},
                             disabled=True,
-                            updatemode='drag',
                             tooltip={"placement": "bottom", "always_visible": True}
                         )
                     ], className="mb-3"),
@@ -207,7 +203,6 @@ app.layout = dbc.Container([
     dcc.Store(id='processor-store', storage_type='memory'),
     dcc.Store(id='analyzer-store', storage_type='memory'),
     dcc.Store(id='slider-values-store', storage_type='memory'),
-    dcc.Interval(id='update-interval', interval=300),  # 300ms debounce
 
 ], fluid=True, className="p-4")
 
@@ -346,32 +341,19 @@ def store_slider_values(tube_idx, vldl, idl, ldl, hdl):
      Output('gel-graph', 'figure'),
      Output('results-table', 'children'),
      Output('metrics-row', 'children')],
-    [Input('update-interval', 'n_intervals'),
+    [Input('tube-selector', 'value'),
+     Input('vldl-slider', 'value'),
+     Input('idl-slider', 'value'),
+     Input('ldl-slider', 'value'),
+     Input('hdl-slider', 'value'),
      Input('processor-store', 'data')],
-    State('slider-values-store', 'data'),
-    State('processor-store', 'data'),
     prevent_initial_call=True
 )
-def update_analysis(n_intervals, processor_changed, slider_data, processor_data):
-    """Update all visualizations and results (debounced)"""
+def update_analysis(tube_idx, vldl, idl, ldl, hdl, processor_data):
+    """Update all visualizations and results"""
 
     if not processor_data:
         return {}, {}, "Load an image to start", []
-
-    # Use slider data if available, otherwise use defaults
-    if slider_data:
-        tube_idx = slider_data['tube_idx']
-        vldl = slider_data['vldl']
-        idl = slider_data['idl']
-        ldl = slider_data['ldl']
-        hdl = slider_data['hdl']
-    else:
-        # Default values
-        tube_idx = 0
-        vldl = [27, 48]
-        idl = [48, 65]
-        ldl = [68, 120]
-        hdl = [260, 300]
 
     # Reconstruct processor
     processor = GelImageProcessor.__new__(GelImageProcessor)
