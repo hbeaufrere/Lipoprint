@@ -12,10 +12,11 @@ import numpy as np
 import pandas as pd
 import base64
 import io
+import tempfile
 from pathlib import Path
+from datetime import datetime
 
 from image_processor import GelImageProcessor, DensitometryAnalyzer
-from export_handler import AnalysisExporter
 
 # Initialize Dash app
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
@@ -28,6 +29,37 @@ COLORS = {
     'LDL': '#FF0000',   # Red
     'HDL': '#4ECDC4'    # Teal
 }
+
+def _reconstruct_analysis(processor_data, tube_idx, vldl, idl, ldl, hdl):
+    """Reconstruct processor and analyzer from stored data."""
+    processor = GelImageProcessor.__new__(GelImageProcessor)
+    processor.image_path = processor_data['image_path']
+    processor.tubes = []
+
+    for tube_data in processor_data['tubes']:
+        region = np.array(tube_data['region'], dtype=np.uint8)
+        processor.tubes.append({
+            'index': tube_data['index'],
+            'region': region,
+            'x_range': tuple(tube_data['x_range']),
+            'y_range': tuple(tube_data['y_range']),
+        })
+
+    profile = processor.get_densitometry_profile(tube_idx, auto_crop=False)
+    background = processor.detect_background(profile)
+
+    bands = [
+        {'left': vldl[0], 'right': vldl[1], 'category': 'VLDL'},
+        {'left': idl[0], 'right': idl[1], 'category': 'IDL'},
+        {'left': ldl[0], 'right': ldl[1], 'category': 'LDL'},
+        {'left': hdl[0], 'right': hdl[1], 'category': 'HDL'},
+    ]
+
+    analyzer = DensitometryAnalyzer(profile, background)
+    analyzer.bands = bands
+
+    return processor, analyzer, profile, background, bands
+
 
 # ============================================================================
 # APP LAYOUT
@@ -305,19 +337,11 @@ app.layout = dbc.Container([
                     html.Label("Export:", className="fw-bold"),
                     dbc.Row([
                         dbc.Col([
-                            dcc.Download(id='download-csv'),
-                            dbc.Button("📥 CSV", id='export-csv-btn', color="primary", size="sm", className="w-100")
+                            dcc.Download(id='download-pdf'),
+                            dbc.Button("📥 PDF Report", id='export-pdf-btn', color="primary", size="sm", className="w-100")
                         ], className="mb-2"),
                         dbc.Col([
-                            dcc.Download(id='download-json'),
-                            dbc.Button("📥 JSON", id='export-json-btn', color="primary", size="sm", className="w-100")
-                        ], className="mb-2"),
-                        dbc.Col([
-                            dcc.Download(id='download-txt'),
-                            dbc.Button("📥 Summary", id='export-txt-btn', color="primary", size="sm", className="w-100")
-                        ], className="mb-2"),
-                        dbc.Col([
-                            dbc.Button("📋 Copy", id='copy-table-btn', color="success", size="sm", className="w-100"),
+                            dbc.Button("📋 Copy Table", id='copy-table-btn', color="success", size="sm", className="w-100"),
                             html.Div(id='copy-feedback', style={'font-size': '11px', 'margin-top': '2px'})
                         ], className="mb-2"),
                     ]),
@@ -330,6 +354,7 @@ app.layout = dbc.Container([
     # Hidden stores for state management
     dcc.Store(id='processor-store', storage_type='memory'),
     dcc.Store(id='analyzer-store', storage_type='memory'),
+    dcc.Store(id='table-tsv-store', storage_type='memory'),
 
 ], fluid=True, className="p-4")
 
@@ -408,55 +433,71 @@ def enable_controls(processor_data):
 
 @callback(
     Output('reference-tubes', 'children'),
-    Input('processor-store', 'data')
+    [Input('processor-store', 'data'),
+     Input('tube-selector', 'value')]
 )
-def display_reference_tubes(processor_data):
-    """Display all 12 tubes as reference grid"""
+def display_reference_tubes(processor_data, selected_tube):
+    """Display all 12 tubes as reference grid with selected tube highlighted"""
     if not processor_data:
         return html.Div("Load image to see reference", className="text-muted small")
 
     try:
+        from PIL import Image
         tubes_data = processor_data['tubes']
         if not tubes_data:
             return html.Div("No tubes found", className="text-muted small")
 
-        # Get tube images and rotate them
-        tube_images = []
-        for tube_data in tubes_data:
+        if selected_tube is None:
+            selected_tube = 0
+
+        tube_elements = []
+        for i, tube_data in enumerate(tubes_data):
             region = np.array(tube_data['region'], dtype=np.uint8)
-            rotated = np.rot90(region)  # Rotate for horizontal view
-            tube_images.append(rotated)
+            rotated = np.rot90(region)
 
-        # Find max dimensions for padding
-        max_height = max(t.shape[0] for t in tube_images)
-        max_width = max(t.shape[1] for t in tube_images)
+            img_pil = Image.fromarray(rotated.astype(np.uint8))
+            buf = io.BytesIO()
+            img_pil.save(buf, format='PNG')
+            buf.seek(0)
+            img_b64 = base64.b64encode(buf.getvalue()).decode()
 
-        # Pad all tubes to same size
-        padded_tubes = []
-        for t in tube_images:
-            h, w = t.shape
-            pad_h = (max_height - h) // 2
-            pad_w = (max_width - w) // 2
-            padded = np.pad(t, ((pad_h, max_height - h - pad_h), (pad_w, max_width - w - pad_w)),
-                           mode='constant', constant_values=255)
-            padded_tubes.append(padded)
+            is_selected = (i == selected_tube)
+            border_style = '3px solid #0d6efd' if is_selected else '1px solid #ddd'
+            bg_color = '#e7f1ff' if is_selected else 'transparent'
 
-        # Create vertical strip (12x1 arrangement)
-        montage = np.vstack(padded_tubes)
+            tube_elements.append(
+                html.Div([
+                    html.Div(
+                        f"T{i+1}",
+                        style={
+                            'font-size': '10px',
+                            'font-weight': 'bold' if is_selected else 'normal',
+                            'color': '#0d6efd' if is_selected else '#666',
+                            'width': '24px',
+                            'text-align': 'right',
+                            'margin-right': '4px',
+                            'flex-shrink': '0',
+                        }
+                    ),
+                    html.Img(
+                        src=f'data:image/png;base64,{img_b64}',
+                        style={
+                            'width': '100%',
+                            'border': border_style,
+                            'border-radius': '2px',
+                        }
+                    ),
+                ], style={
+                    'display': 'flex',
+                    'align-items': 'center',
+                    'margin-bottom': '2px',
+                    'padding': '2px',
+                    'background-color': bg_color,
+                    'border-radius': '4px',
+                })
+            )
 
-        # Encode to base64
-        import io
-        from PIL import Image
-        img_pil = Image.fromarray(montage.astype(np.uint8))
-        buf = io.BytesIO()
-        img_pil.save(buf, format='PNG')
-        buf.seek(0)
-        img_base64 = base64.b64encode(buf.getvalue()).decode()
-
-        return html.Img(
-            src=f'data:image/png;base64,{img_base64}',
-            style={'width': '100%', 'max-width': '280px', 'border': '1px solid #ddd', 'border-radius': '4px'}
-        )
+        return html.Div(tube_elements)
     except Exception as e:
         return html.Div(f"Error: {str(e)}", className="text-danger small")
 
@@ -465,7 +506,8 @@ def display_reference_tubes(processor_data):
     [Output('profile-graph', 'figure'),
      Output('gel-graph', 'figure'),
      Output('results-table', 'children'),
-     Output('metrics-row', 'children')],
+     Output('metrics-row', 'children'),
+     Output('table-tsv-store', 'data')],
     [Input('tube-selector', 'value'),
      Input('vldl-slider', 'value'),
      Input('idl-slider', 'value'),
@@ -479,39 +521,11 @@ def update_analysis(tube_idx, vldl, idl, ldl, hdl, processor_data, cholesterol_v
     """Update all visualizations and results"""
 
     if not processor_data:
-        return {}, {}, "Load an image to start", []
+        return {}, {}, "Load an image to start", [], None
 
-    # Reconstruct processor
-    processor = GelImageProcessor.__new__(GelImageProcessor)
-    processor.image_path = processor_data['image_path']
-    processor.tubes = []
-
-    # Reconstruct tubes
-    import cv2
-    for tube_data in processor_data['tubes']:
-        region = np.array(tube_data['region'], dtype=np.uint8)
-        processor.tubes.append({
-            'index': tube_data['index'],
-            'region': region,
-            'x_range': tuple(tube_data['x_range']),
-            'y_range': tuple(tube_data['y_range']),
-        })
-
-    # Get profile
-    profile = processor.get_densitometry_profile(tube_idx, auto_crop=False)
-    background = processor.detect_background(profile)
-    profile_len = len(profile)
-
-    # Create bands
-    bands = [
-        {'left': vldl[0], 'right': vldl[1], 'category': 'VLDL'},
-        {'left': idl[0], 'right': idl[1], 'category': 'IDL'},
-        {'left': ldl[0], 'right': ldl[1], 'category': 'LDL'},
-        {'left': hdl[0], 'right': hdl[1], 'category': 'HDL'},
-    ]
-
-    analyzer = DensitometryAnalyzer(profile, background)
-    analyzer.bands = bands
+    processor, analyzer, profile, background, bands = _reconstruct_analysis(
+        processor_data, tube_idx, vldl, idl, ldl, hdl
+    )
 
     # ---- Create Profile Graph ----
     x = np.arange(len(profile))
@@ -637,224 +651,197 @@ def update_analysis(tube_idx, vldl, idl, ldl, hdl, processor_data, cholesterol_v
             ], width=3)
         )
 
-    return fig_profile, fig_gel, table, metrics
+    # ---- TSV data for clipboard ----
+    has_chol = cholesterol_value and cholesterol_value > 0
+    if has_chol:
+        tsv_data = "Lipoprotein\tAUC\tPercentage (%)\tCholesterol (mg/dL)\n"
+        for band, auc, pct in zip(bands, band_aucs, percentages):
+            chol = (pct / 100.0) * cholesterol_value
+            tsv_data += f"{band['category']}\t{auc:.2f}\t{pct:.1f}\t{chol:.1f}\n"
+        tsv_data += f"\nTotal Cholesterol\t\t\t{cholesterol_value}"
+    else:
+        tsv_data = "Lipoprotein\tAUC\tPercentage (%)\n"
+        for band, auc, pct in zip(bands, band_aucs, percentages):
+            tsv_data += f"{band['category']}\t{auc:.2f}\t{pct:.1f}\n"
+
+    return fig_profile, fig_gel, table, metrics, tsv_data
 
 
 @callback(
-    Output('download-csv', 'data'),
-    Input('export-csv-btn', 'n_clicks'),
+    Output('download-pdf', 'data'),
+    Input('export-pdf-btn', 'n_clicks'),
     [State('tube-selector', 'value'),
      State('processor-store', 'data'),
-     State('vldl-slider', 'value'),
-     State('idl-slider', 'value'),
-     State('ldl-slider', 'value'),
-     State('hdl-slider', 'value')],
-    prevent_initial_call=True
-)
-def export_csv(n_clicks, tube_idx, processor_data, vldl, idl, ldl, hdl):
-    """Export to CSV"""
-    if not processor_data:
-        return None
-
-    processor = GelImageProcessor.__new__(GelImageProcessor)
-    processor.image_path = processor_data['image_path']
-    processor.tubes = []
-
-    for tube_data in processor_data['tubes']:
-        region = np.array(tube_data['region'], dtype=np.uint8)
-        processor.tubes.append({
-            'index': tube_data['index'],
-            'region': region,
-            'x_range': tuple(tube_data['x_range']),
-            'y_range': tuple(tube_data['y_range']),
-        })
-
-    profile = processor.get_densitometry_profile(tube_idx, auto_crop=False)
-    background = processor.detect_background(profile)
-    analyzer = DensitometryAnalyzer(profile, background)
-    analyzer.bands = [
-        {'left': vldl[0], 'right': vldl[1], 'category': 'VLDL'},
-        {'left': idl[0], 'right': idl[1], 'category': 'IDL'},
-        {'left': ldl[0], 'right': ldl[1], 'category': 'LDL'},
-        {'left': hdl[0], 'right': hdl[1], 'category': 'HDL'},
-    ]
-
-    exporter = AnalysisExporter(processor, analyzer, tube_idx)
-
-    import io
-    csv_buffer = io.StringIO()
-    exporter.export_to_csv('/tmp/analysis.csv')
-    with open('/tmp/analysis.csv', 'r') as f:
-        csv_content = f.read()
-
-    return dict(content=csv_content, filename=f"tube_{tube_idx+1}_analysis.csv")
-
-
-@callback(
-    Output('download-json', 'data'),
-    Input('export-json-btn', 'n_clicks'),
-    [State('tube-selector', 'value'),
-     State('processor-store', 'data'),
-     State('vldl-slider', 'value'),
-     State('idl-slider', 'value'),
-     State('ldl-slider', 'value'),
-     State('hdl-slider', 'value')],
-    prevent_initial_call=True
-)
-def export_json(n_clicks, tube_idx, processor_data, vldl, idl, ldl, hdl):
-    """Export to JSON"""
-    if not processor_data:
-        return None
-
-    processor = GelImageProcessor.__new__(GelImageProcessor)
-    processor.image_path = processor_data['image_path']
-    processor.tubes = []
-
-    for tube_data in processor_data['tubes']:
-        region = np.array(tube_data['region'], dtype=np.uint8)
-        processor.tubes.append({
-            'index': tube_data['index'],
-            'region': region,
-            'x_range': tuple(tube_data['x_range']),
-            'y_range': tuple(tube_data['y_range']),
-        })
-
-    profile = processor.get_densitometry_profile(tube_idx, auto_crop=False)
-    background = processor.detect_background(profile)
-    analyzer = DensitometryAnalyzer(profile, background)
-    analyzer.bands = [
-        {'left': vldl[0], 'right': vldl[1], 'category': 'VLDL'},
-        {'left': idl[0], 'right': idl[1], 'category': 'IDL'},
-        {'left': ldl[0], 'right': ldl[1], 'category': 'LDL'},
-        {'left': hdl[0], 'right': hdl[1], 'category': 'HDL'},
-    ]
-
-    exporter = AnalysisExporter(processor, analyzer, tube_idx)
-    exporter.export_to_json('/tmp/analysis.json')
-
-    with open('/tmp/analysis.json', 'r') as f:
-        json_content = f.read()
-
-    return dict(content=json_content, filename=f"tube_{tube_idx+1}_analysis.json")
-
-
-@callback(
-    Output('download-txt', 'data'),
-    Input('export-txt-btn', 'n_clicks'),
-    [State('tube-selector', 'value'),
-     State('processor-store', 'data'),
-     State('vldl-slider', 'value'),
-     State('idl-slider', 'value'),
-     State('ldl-slider', 'value'),
-     State('hdl-slider', 'value')],
-    prevent_initial_call=True
-)
-def export_summary(n_clicks, tube_idx, processor_data, vldl, idl, ldl, hdl):
-    """Export summary"""
-    if not processor_data:
-        return None
-
-    processor = GelImageProcessor.__new__(GelImageProcessor)
-    processor.image_path = processor_data['image_path']
-    processor.tubes = []
-
-    for tube_data in processor_data['tubes']:
-        region = np.array(tube_data['region'], dtype=np.uint8)
-        processor.tubes.append({
-            'index': tube_data['index'],
-            'region': region,
-            'x_range': tuple(tube_data['x_range']),
-            'y_range': tuple(tube_data['y_range']),
-        })
-
-    profile = processor.get_densitometry_profile(tube_idx, auto_crop=False)
-    background = processor.detect_background(profile)
-    analyzer = DensitometryAnalyzer(profile, background)
-    analyzer.bands = [
-        {'left': vldl[0], 'right': vldl[1], 'category': 'VLDL'},
-        {'left': idl[0], 'right': idl[1], 'category': 'IDL'},
-        {'left': ldl[0], 'right': ldl[1], 'category': 'LDL'},
-        {'left': hdl[0], 'right': hdl[1], 'category': 'HDL'},
-    ]
-
-    exporter = AnalysisExporter(processor, analyzer, tube_idx)
-    exporter.export_summary('/tmp/summary.txt')
-
-    with open('/tmp/summary.txt', 'r') as f:
-        txt_content = f.read()
-
-    return dict(content=txt_content, filename=f"tube_{tube_idx+1}_summary.txt")
-
-
-@callback(
-    Output('copy-feedback', 'children'),
-    Input('copy-table-btn', 'n_clicks'),
-    [State('tube-selector', 'value'),
      State('vldl-slider', 'value'),
      State('idl-slider', 'value'),
      State('ldl-slider', 'value'),
      State('hdl-slider', 'value'),
-     State('processor-store', 'data')],
+     State('cholesterol-input', 'value')],
     prevent_initial_call=True
 )
-def copy_table_to_clipboard(n_clicks, tube_idx, vldl, idl, ldl, hdl, processor_data):
-    """Copy results table to clipboard in Excel format (TSV)"""
+def export_pdf(n_clicks, tube_idx, processor_data, vldl, idl, ldl, hdl, cholesterol_value):
+    """Export PDF report with graph, tube image, and results table"""
     if not processor_data:
-        return html.Div("No data", className="text-danger")
+        return None
 
     try:
-        # Reconstruct processor and analyzer
-        processor = GelImageProcessor.__new__(GelImageProcessor)
-        processor.image_path = processor_data['image_path']
-        processor.tubes = []
+        from fpdf import FPDF
+        from PIL import Image
 
-        for tube_data in processor_data['tubes']:
-            region = np.array(tube_data['region'], dtype=np.uint8)
-            processor.tubes.append({
-                'index': tube_data['index'],
-                'region': region,
-                'x_range': tuple(tube_data['x_range']),
-                'y_range': tuple(tube_data['y_range']),
-            })
-
-        profile = processor.get_densitometry_profile(tube_idx, auto_crop=False)
-        background = processor.detect_background(profile)
-        analyzer = DensitometryAnalyzer(profile, background)
-        analyzer.bands = [
-            {'left': vldl[0], 'right': vldl[1], 'category': 'VLDL'},
-            {'left': idl[0], 'right': idl[1], 'category': 'IDL'},
-            {'left': ldl[0], 'right': ldl[1], 'category': 'LDL'},
-            {'left': hdl[0], 'right': hdl[1], 'category': 'HDL'},
-        ]
-
+        processor, analyzer, profile, background, bands = _reconstruct_analysis(
+            processor_data, tube_idx, vldl, idl, ldl, hdl
+        )
         band_aucs, percentages = analyzer.calculate_band_percentages()
 
-        # Create TSV format (Excel compatible paste)
-        tsv_data = "Lipoprotein\tAUC\tPercentage (%)\n"
-        for band, auc, pct in zip(analyzer.bands, band_aucs, percentages):
-            tsv_data += f"{band['category']}\t{auc:.2f}\t{pct:.1f}\n"
+        # --- Build the densitometry profile figure ---
+        x = np.arange(len(profile))
+        fig_profile = go.Figure()
+        fig_profile.add_trace(go.Scatter(
+            x=x, y=profile, mode='lines', name='Profile',
+            line=dict(color='black', width=2.5)
+        ))
+        fig_profile.add_hline(y=background, line_dash="dash", line_color="gray")
 
-        # Copy to clipboard using dcc.Clipboard alternative via callback
-        # Since we can't directly access clipboard in server-side callback,
-        # we'll return the data and use JavaScript to copy it
-        import json
-        clipboard_data = json.dumps({
-            'tsv': tsv_data,
-            'html': '<table><tr><th>Lipoprotein</th><th>AUC</th><th>Percentage (%)</th></tr>' +
-                   ''.join([f'<tr><td>{b["category"]}</td><td>{a:.2f}</td><td>{p:.1f}</td></tr>'
-                           for b, a, p in zip(analyzer.bands, band_aucs, percentages)]) +
-                   '</table>'
-        })
+        def trim_top_25(start, end):
+            return start + int((end - start) * 0.25)
 
-        # Store in hidden div for JavaScript to access
-        return dcc.Markdown(
-            f'✓ Copy ready! Table data copied.\n\n'
-            f'Paste in Excel:\n\n```\n{tsv_data}```',
-            className="text-success small"
+        for band in bands:
+            left = band['left']
+            right = band['right']
+            cat = band['category']
+            color = COLORS[cat]
+            lt = trim_top_25(left, right)
+            band_x = x[lt:right+1]
+            band_y = profile[lt:right+1]
+            fig_profile.add_trace(go.Scatter(
+                x=band_x, y=band_y, fill='tozeroy', fillcolor=color,
+                opacity=0.35, line=dict(color=color, width=2), name=cat
+            ))
+            fig_profile.add_vline(x=lt, line_dash="dash", line_color=color, line_width=2, opacity=0.7)
+            fig_profile.add_vline(x=right, line_dash="dash", line_color=color, line_width=2, opacity=0.7)
+
+        fig_profile.update_layout(
+            title=f'Tube {tube_idx+1} - Densitometry Profile',
+            xaxis_title='Position (pixels)', yaxis_title='Optical Density',
+            template='plotly_white', width=800, height=400
         )
 
+        # --- Build the gel tube figure ---
+        tube_region = processor.tubes[tube_idx]['region']
+        tube_display = np.rot90(tube_region)
+        fig_gel = go.Figure()
+        fig_gel.add_trace(go.Heatmap(
+            z=tube_display, colorscale='Gray', showscale=False, name='Tube ROI'
+        ))
+        fig_gel.update_layout(
+            title=f'Tube {tube_idx+1} - ROI',
+            template='plotly_white', width=800, height=250
+        )
+
+        # --- Render figures to PNG ---
+        profile_png = fig_profile.to_image(format='png', engine='kaleido')
+        gel_png = fig_gel.to_image(format='png', engine='kaleido')
+
+        profile_tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+        profile_tmp.write(profile_png)
+        profile_tmp.close()
+
+        gel_tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+        gel_tmp.write(gel_png)
+        gel_tmp.close()
+
+        # --- Create PDF ---
+        pdf = FPDF()
+        pdf.add_page()
+
+        # Title
+        pdf.set_font('Helvetica', 'B', 18)
+        pdf.cell(0, 10, 'CLIPR - Lipoprint Analysis Tool', ln=True, align='C')
+        pdf.set_font('Helvetica', '', 11)
+        pdf.cell(0, 7, 'Hugues Beaufrere, DVM, PhD, DACZM', ln=True, align='C')
+        pdf.ln(3)
+        pdf.set_font('Helvetica', '', 9)
+        pdf.cell(0, 5, f'Date: {datetime.now().strftime("%Y-%m-%d %H:%M")}    |    Tube: {tube_idx + 1}', ln=True, align='C')
+        pdf.ln(5)
+
+        # Densitometry graph
+        pdf.image(profile_tmp.name, x=10, w=190)
+        pdf.ln(3)
+
+        # Tube image
+        pdf.image(gel_tmp.name, x=10, w=190)
+        pdf.ln(5)
+
+        # Results table
+        pdf.set_font('Helvetica', 'B', 12)
+        pdf.cell(0, 8, 'Lipoprotein Profile', ln=True)
+        pdf.ln(2)
+
+        has_chol = cholesterol_value and cholesterol_value > 0
+
+        # Table header
+        pdf.set_font('Helvetica', 'B', 10)
+        pdf.set_fill_color(230, 230, 230)
+        col_w = 45 if not has_chol else 38
+        pdf.cell(col_w, 8, 'Lipoprotein', 1, 0, 'C', True)
+        pdf.cell(col_w, 8, 'AUC', 1, 0, 'C', True)
+        pdf.cell(col_w, 8, 'Percentage', 1, 0, 'C', True)
+        if has_chol:
+            pdf.cell(col_w, 8, 'Chol (mg/dL)', 1, 0, 'C', True)
+        pdf.ln()
+
+        # Table rows
+        pdf.set_font('Helvetica', '', 10)
+        for band, auc, pct in zip(bands, band_aucs, percentages):
+            pdf.cell(col_w, 7, band['category'], 1, 0, 'C')
+            pdf.cell(col_w, 7, f'{auc:.2f}', 1, 0, 'C')
+            pdf.cell(col_w, 7, f'{pct:.1f}%', 1, 0, 'C')
+            if has_chol:
+                chol = (pct / 100.0) * cholesterol_value
+                pdf.cell(col_w, 7, f'{chol:.1f}', 1, 0, 'C')
+            pdf.ln()
+
+        if has_chol:
+            pdf.ln(3)
+            pdf.set_font('Helvetica', 'B', 10)
+            pdf.cell(0, 7, f'Total Cholesterol: {cholesterol_value} mg/dL', ln=True)
+
+        # Output PDF
+        pdf_bytes = pdf.output()
+
+        # Cleanup temp files
+        import os
+        os.unlink(profile_tmp.name)
+        os.unlink(gel_tmp.name)
+
+        pdf_b64 = base64.b64encode(pdf_bytes).decode()
+        return dict(content=pdf_b64, filename=f'tube_{tube_idx+1}_report.pdf', base64=True)
+
     except Exception as e:
-        return html.Div(f"Error: {str(e)}", className="text-danger small")
+        print(f"PDF export error: {e}")
+        return None
+
+
+# Clientside callback for clipboard copy
+app.clientside_callback(
+    """
+    function(n_clicks, tsvData) {
+        if (!n_clicks || !tsvData) {
+            return '';
+        }
+        navigator.clipboard.writeText(tsvData).then(function() {
+            // success
+        }).catch(function(err) {
+            console.error('Copy failed:', err);
+        });
+        return '✓ Copied!';
+    }
+    """,
+    Output('copy-feedback', 'children'),
+    Input('copy-table-btn', 'n_clicks'),
+    State('table-tsv-store', 'data'),
+    prevent_initial_call=True
+)
 
 
 # Sync input fields with sliders for all bands
