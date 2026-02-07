@@ -13,7 +13,13 @@ import plotly.graph_objects as go
 
 from image_processor import GelImageProcessor, DensitometryAnalyzer
 from export_handler import AnalysisExporter
-from streamlit_plotly_events import plotly_events
+
+# Try to import plotly_events for interactive boundary adjustment
+try:
+    from streamlit_plotly_events import plotly_events
+    PLOTLY_EVENTS_AVAILABLE = True
+except ImportError:
+    PLOTLY_EVENTS_AVAILABLE = False
 
 # Page configuration
 st.set_page_config(
@@ -210,7 +216,7 @@ with right_col:
             fig.add_vline(x=right, line_dash="dash", line_color=color, line_width=2, opacity=0.7)
 
         fig.update_layout(
-            title='Densitometry Profile (Click boundaries to adjust)',
+            title='Densitometry Profile' + (' (Click boundaries to adjust)' if PLOTLY_EVENTS_AVAILABLE else ' (Use sliders to adjust)'),
             xaxis_title='Position (pixels)',
             yaxis_title='Optical Density',
             height=500,
@@ -218,14 +224,18 @@ with right_col:
             template='plotly_white'
         )
 
-        # Interactive graph with boundary adjustment
-        selected_points = plotly_events(
-            fig,
-            click_event=True,
-            hover_event=False,
-            select_event=False,
-            key="profile_graph"
-        )
+        # Interactive graph with boundary adjustment (if available)
+        if PLOTLY_EVENTS_AVAILABLE:
+            selected_points = plotly_events(
+                fig,
+                click_event=True,
+                hover_event=False,
+                select_event=False,
+                key="profile_graph"
+            )
+        else:
+            st.plotly_chart(fig, use_container_width=True)
+            selected_points = None
 
         # Map for quick reference
         boundaries_current = {
@@ -235,8 +245,8 @@ with right_col:
             'hdl_start': hdl_start, 'hdl_end': hdl_end,
         }
 
-        # Handle clicks on boundaries for interactive adjustment
-        if selected_points and len(selected_points) > 0:
+        # Handle clicks on boundaries for interactive adjustment (only if available)
+        if PLOTLY_EVENTS_AVAILABLE and selected_points and len(selected_points) > 0:
             clicked_x = int(selected_points[0]['x'])
 
             # Find which boundary was clicked (within ~30 pixels tolerance)
@@ -252,8 +262,8 @@ with right_col:
             if closest_boundary:
                 st.session_state.selected_boundary = closest_boundary
 
-        # Show adjustment controls if a boundary is selected
-        if st.session_state.selected_boundary:
+        # Show adjustment controls if a boundary is selected (only if feature available)
+        if PLOTLY_EVENTS_AVAILABLE and st.session_state.selected_boundary:
             boundary_name = st.session_state.selected_boundary
             category_name, bound_type = boundary_name.split('_')
             category = category_name.upper()
