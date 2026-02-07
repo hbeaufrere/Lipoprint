@@ -87,55 +87,155 @@ app.layout = dbc.Container([
                     html.Br(),
 
                     html.Label("VLDL:", className="fw-bold text-danger"),
-                    html.Div([
-                        dcc.RangeSlider(
-                            id='vldl-slider',
-                            min=0, max=313, step=1,
-                            value=[27, 48],
-                            marks={0: '0', 313: '313'},
-                            disabled=True,
-                            
-                            tooltip={"placement": "bottom", "always_visible": True}
-                        )
+                    dbc.Row([
+                        dbc.Col([
+                            dcc.RangeSlider(
+                                id='vldl-slider',
+                                min=0, max=313, step=1,
+                                value=[27, 48],
+                                marks={0: '0', 313: '313'},
+                                disabled=True,
+                                tooltip={"placement": "bottom", "always_visible": True}
+                            )
+                        ], width=9),
+                        dbc.Col([
+                            dbc.InputGroup([
+                                dcc.Input(
+                                    id='vldl-min-input',
+                                    type='number',
+                                    min=0, max=313,
+                                    value=27,
+                                    disabled=True,
+                                    className='form-control form-control-sm',
+                                    placeholder='Min',
+                                    style={'font-size': '12px', 'padding': '2px 5px', 'width': '45px'}
+                                ),
+                                dcc.Input(
+                                    id='vldl-max-input',
+                                    type='number',
+                                    min=0, max=313,
+                                    value=48,
+                                    disabled=True,
+                                    className='form-control form-control-sm',
+                                    placeholder='Max',
+                                    style={'font-size': '12px', 'padding': '2px 5px', 'width': '45px'}
+                                ),
+                            ], size='sm')
+                        ], width=3),
                     ], className="mb-3"),
 
                     html.Label("IDL:", className="fw-bold text-warning"),
-                    html.Div([
-                        dcc.RangeSlider(
-                            id='idl-slider',
-                            min=0, max=313, step=1,
-                            value=[48, 65],
-                            marks={0: '0', 313: '313'},
-                            disabled=True,
-                            
-                            tooltip={"placement": "bottom", "always_visible": True}
-                        )
+                    dbc.Row([
+                        dbc.Col([
+                            dcc.RangeSlider(
+                                id='idl-slider',
+                                min=0, max=313, step=1,
+                                value=[48, 65],
+                                marks={0: '0', 313: '313'},
+                                disabled=True,
+                                tooltip={"placement": "bottom", "always_visible": True}
+                            )
+                        ], width=9),
+                        dbc.Col([
+                            dbc.InputGroup([
+                                dcc.Input(
+                                    id='idl-min-input',
+                                    type='number',
+                                    min=0, max=313,
+                                    value=48,
+                                    disabled=True,
+                                    className='form-control form-control-sm',
+                                    placeholder='Min',
+                                    style={'font-size': '12px', 'padding': '2px 5px', 'width': '45px'}
+                                ),
+                                dcc.Input(
+                                    id='idl-max-input',
+                                    type='number',
+                                    min=0, max=313,
+                                    value=65,
+                                    disabled=True,
+                                    className='form-control form-control-sm',
+                                    placeholder='Max',
+                                    style={'font-size': '12px', 'padding': '2px 5px', 'width': '45px'}
+                                ),
+                            ], size='sm')
+                        ], width=3),
                     ], className="mb-3"),
 
                     html.Label("LDL:", className="fw-bold text-warning"),
-                    html.Div([
-                        dcc.RangeSlider(
-                            id='ldl-slider',
-                            min=0, max=313, step=1,
-                            value=[68, 120],
-                            marks={0: '0', 313: '313'},
-                            disabled=True,
-                            
-                            tooltip={"placement": "bottom", "always_visible": True}
-                        )
+                    dbc.Row([
+                        dbc.Col([
+                            dcc.RangeSlider(
+                                id='ldl-slider',
+                                min=0, max=313, step=1,
+                                value=[68, 120],
+                                marks={0: '0', 313: '313'},
+                                disabled=True,
+                                tooltip={"placement": "bottom", "always_visible": True}
+                            )
+                        ], width=9),
+                        dbc.Col([
+                            dbc.InputGroup([
+                                dcc.Input(
+                                    id='ldl-min-input',
+                                    type='number',
+                                    min=0, max=313,
+                                    value=68,
+                                    disabled=True,
+                                    className='form-control form-control-sm',
+                                    placeholder='Min',
+                                    style={'font-size': '12px', 'padding': '2px 5px', 'width': '45px'}
+                                ),
+                                dcc.Input(
+                                    id='ldl-max-input',
+                                    type='number',
+                                    min=0, max=313,
+                                    value=120,
+                                    disabled=True,
+                                    className='form-control form-control-sm',
+                                    placeholder='Max',
+                                    style={'font-size': '12px', 'padding': '2px 5px', 'width': '45px'}
+                                ),
+                            ], size='sm')
+                        ], width=3),
                     ], className="mb-3"),
 
                     html.Label("HDL:", className="fw-bold text-info"),
-                    html.Div([
-                        dcc.RangeSlider(
-                            id='hdl-slider',
-                            min=0, max=313, step=1,
-                            value=[260, 300],
-                            marks={0: '0', 313: '313'},
-                            disabled=True,
-                            
-                            tooltip={"placement": "bottom", "always_visible": True}
-                        )
+                    dbc.Row([
+                        dbc.Col([
+                            dcc.RangeSlider(
+                                id='hdl-slider',
+                                min=0, max=313, step=1,
+                                value=[260, 300],
+                                marks={0: '0', 313: '313'},
+                                disabled=True,
+                                tooltip={"placement": "bottom", "always_visible": True}
+                            )
+                        ], width=9),
+                        dbc.Col([
+                            dbc.InputGroup([
+                                dcc.Input(
+                                    id='hdl-min-input',
+                                    type='number',
+                                    min=0, max=313,
+                                    value=260,
+                                    disabled=True,
+                                    className='form-control form-control-sm',
+                                    placeholder='Min',
+                                    style={'font-size': '12px', 'padding': '2px 5px', 'width': '45px'}
+                                ),
+                                dcc.Input(
+                                    id='hdl-max-input',
+                                    type='number',
+                                    min=0, max=313,
+                                    value=300,
+                                    disabled=True,
+                                    className='form-control form-control-sm',
+                                    placeholder='Max',
+                                    style={'font-size': '12px', 'padding': '2px 5px', 'width': '45px'}
+                                ),
+                            ], size='sm')
+                        ], width=3),
                     ], className="mb-3"),
 
                 ])
@@ -636,6 +736,34 @@ def export_summary(n_clicks, tube_idx, processor_data, vldl, idl, ldl, hdl):
         txt_content = f.read()
 
     return dict(content=txt_content, filename=f"tube_{tube_idx+1}_summary.txt")
+
+
+# Sync input fields with sliders for all bands
+for band_name in ['vldl', 'idl', 'ldl', 'hdl']:
+    @callback(
+        [Output(f'{band_name}-slider', 'value'),
+         Output(f'{band_name}-min-input', 'value'),
+         Output(f'{band_name}-max-input', 'value')],
+        [Input(f'{band_name}-slider', 'value'),
+         Input(f'{band_name}-min-input', 'value'),
+         Input(f'{band_name}-max-input', 'value')],
+        prevent_initial_call=True
+    )
+    def sync_band_values(slider_val, min_val, max_val, band=band_name):
+        """Sync slider and input values"""
+        from dash import ctx
+        if not ctx.triggered:
+            return slider_val, slider_val[0] if slider_val else 0, slider_val[1] if slider_val else 0
+
+        trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+
+        if trigger_id == f'{band}-slider':
+            return slider_val, slider_val[0], slider_val[1]
+        else:
+            # Input changed, update slider
+            min_v = int(min_val) if min_val is not None else 0
+            max_v = int(max_val) if max_val is not None else 313
+            return [min_v, max_v], min_v, max_v
 
 
 if __name__ == '__main__':
