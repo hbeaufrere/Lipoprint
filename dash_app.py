@@ -23,10 +23,10 @@ app.title = "Gel Densitometry Analysis"
 
 # Color scheme
 COLORS = {
-    'VLDL': '#FF6B6B',
-    'IDL': '#FFA07A',
-    'LDL': '#FFD700',
-    'HDL': '#4ECDC4'
+    'VLDL': '#FFD700',  # Yellow
+    'IDL': '#FF8C00',   # Orange
+    'LDL': '#FF0000',   # Red
+    'HDL': '#4ECDC4'    # Teal
 }
 
 # ============================================================================
@@ -238,6 +238,12 @@ app.layout = dbc.Container([
                         ], width=3),
                     ], className="mb-3"),
 
+                    html.Hr(),
+
+                    # Reference Tubes Thumbnail
+                    html.Label("Tube Reference:", className="fw-bold text-muted"),
+                    html.Div(id='reference-tubes', style={'text-align': 'center', 'margin-top': '10px'})
+
                 ])
             ])
         ], width=3),
@@ -291,12 +297,6 @@ app.layout = dbc.Container([
                             dbc.Button("📥 Summary", id='export-txt-btn', color="primary", size="sm", className="w-100")
                         ], className="mb-2"),
                     ]),
-
-                    html.Hr(),
-
-                    # Reference Tubes Image
-                    html.Label("12 Tubes Reference:", className="fw-bold text-muted"),
-                    html.Div(id='reference-tubes', style={'text-align': 'center', 'margin-top': '10px'})
 
                 ])
             ])
@@ -379,33 +379,47 @@ def enable_controls(processor_data):
     Input('processor-store', 'data')
 )
 def display_reference_tubes(processor_data):
-    """Display all 12 tubes as reference"""
+    """Display all 12 tubes as reference grid"""
     if not processor_data:
         return html.Div("Load image to see reference", className="text-muted small")
 
     try:
-        # Create a montage of all 12 tubes
         tubes_data = processor_data['tubes']
-
         if not tubes_data:
             return html.Div("No tubes found", className="text-muted small")
 
-        # Stack tubes horizontally
+        # Get tube images and rotate them
         tube_images = []
         for tube_data in tubes_data:
             region = np.array(tube_data['region'], dtype=np.uint8)
-            tube_images.append(region)
+            rotated = np.rot90(region)  # Rotate for horizontal view
+            tube_images.append(rotated)
 
-        # Create horizontal strip: rotate each tube 90° and stack
-        rotated_tubes = [np.rot90(t) for t in tube_images]
+        # Find max dimensions for padding
+        max_height = max(t.shape[0] for t in tube_images)
+        max_width = max(t.shape[1] for t in tube_images)
 
-        # Stack all tubes horizontally with small gaps
-        montage = np.hstack(rotated_tubes)
+        # Pad all tubes to same size
+        padded_tubes = []
+        for t in tube_images:
+            h, w = t.shape
+            pad_h = (max_height - h) // 2
+            pad_w = (max_width - w) // 2
+            padded = np.pad(t, ((pad_h, max_height - h - pad_h), (pad_w, max_width - w - pad_w)),
+                           mode='constant', constant_values=255)
+            padded_tubes.append(padded)
 
-        # Encode to base64 for display
+        # Create 3x4 grid (3 rows, 4 columns)
+        rows = []
+        for i in range(0, 12, 4):
+            row = np.hstack(padded_tubes[i:i+4])
+            rows.append(row)
+        montage = np.vstack(rows)
+
+        # Encode to base64
         import io
         from PIL import Image
-        img_pil = Image.fromarray(montage)
+        img_pil = Image.fromarray(montage.astype(np.uint8))
         buf = io.BytesIO()
         img_pil.save(buf, format='PNG')
         buf.seek(0)
@@ -413,7 +427,7 @@ def display_reference_tubes(processor_data):
 
         return html.Img(
             src=f'data:image/png;base64,{img_base64}',
-            style={'width': '100%', 'max-width': '300px', 'border': '1px solid #ccc'}
+            style={'width': '100%', 'max-width': '280px', 'border': '1px solid #ddd', 'border-radius': '4px'}
         )
     except Exception as e:
         return html.Div(f"Error: {str(e)}", className="text-danger small")
