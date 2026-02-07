@@ -81,7 +81,7 @@ app.layout = dbc.Container([
         dbc.Col([
             dbc.Card([
                 dbc.CardBody([
-                    html.H4("Controls", className="card-title"),
+                    html.H4("Image Upload", className="card-title"),
 
                     # File upload
                     dcc.Upload(
@@ -303,6 +303,47 @@ app.layout = dbc.Container([
                     ),
 
                     html.Hr(),
+
+                    # Patient Information
+                    html.Label("Patient Information:", className="fw-bold"),
+                    dbc.Row([
+                        dbc.Col([
+                            dcc.Input(
+                                id='pet-name-input',
+                                type='text',
+                                placeholder='Pet name',
+                                className='form-control form-control-sm',
+                                style={'font-size': '13px', 'padding': '5px'}
+                            )
+                        ], width=3),
+                        dbc.Col([
+                            dcc.Input(
+                                id='owner-name-input',
+                                type='text',
+                                placeholder='Owner name',
+                                className='form-control form-control-sm',
+                                style={'font-size': '13px', 'padding': '5px'}
+                            )
+                        ], width=3),
+                        dbc.Col([
+                            dcc.Input(
+                                id='species-input',
+                                type='text',
+                                placeholder='Species',
+                                className='form-control form-control-sm',
+                                style={'font-size': '13px', 'padding': '5px'}
+                            )
+                        ], width=3),
+                        dbc.Col([
+                            dcc.Input(
+                                id='case-number-input',
+                                type='text',
+                                placeholder='Case #',
+                                className='form-control form-control-sm',
+                                style={'font-size': '13px', 'padding': '5px'}
+                            )
+                        ], width=3),
+                    ], className="mb-2"),
 
                     # Cholesterol Input
                     dbc.Row([
@@ -677,10 +718,15 @@ def update_analysis(tube_idx, vldl, idl, ldl, hdl, processor_data, cholesterol_v
      State('idl-slider', 'value'),
      State('ldl-slider', 'value'),
      State('hdl-slider', 'value'),
-     State('cholesterol-input', 'value')],
+     State('cholesterol-input', 'value'),
+     State('pet-name-input', 'value'),
+     State('owner-name-input', 'value'),
+     State('species-input', 'value'),
+     State('case-number-input', 'value')],
     prevent_initial_call=True
 )
-def export_pdf(n_clicks, tube_idx, processor_data, vldl, idl, ldl, hdl, cholesterol_value):
+def export_pdf(n_clicks, tube_idx, processor_data, vldl, idl, ldl, hdl, cholesterol_value,
+               pet_name, owner_name, species, case_number):
     """Export PDF report with graph, tube image, and results table"""
     if not processor_data:
         return None
@@ -723,7 +769,7 @@ def export_pdf(n_clicks, tube_idx, processor_data, vldl, idl, ldl, hdl, choleste
         ax.set_title(f'Tube {tube_idx+1} - Densitometry Profile')
         ax.set_xlabel('Position (pixels)')
         ax.set_ylabel('Optical Density')
-        ax.legend(loc='upper right', fontsize=8)
+        ax.legend(loc='upper left', fontsize=8, framealpha=0.9)
         ax.set_xlim(0, len(profile))
         fig.tight_layout()
 
@@ -751,7 +797,28 @@ def export_pdf(n_clicks, tube_idx, processor_data, vldl, idl, ldl, hdl, choleste
         pdf.ln(3)
         pdf.set_font('Helvetica', '', 9)
         pdf.cell(0, 5, f'Date: {datetime.now().strftime("%Y-%m-%d %H:%M")}    |    Tube: {tube_idx + 1}', ln=True, align='C')
-        pdf.ln(5)
+        pdf.ln(4)
+
+        # Patient information
+        pdf.set_font('Helvetica', '', 10)
+        col_w = 95
+        if pet_name:
+            pdf.cell(col_w, 6, f'Pet Name: {pet_name}', 0, 0)
+        else:
+            pdf.cell(col_w, 6, '', 0, 0)
+        if owner_name:
+            pdf.cell(col_w, 6, f'Owner: {owner_name}', 0, 1)
+        else:
+            pdf.cell(col_w, 6, '', 0, 1)
+        if species:
+            pdf.cell(col_w, 6, f'Species: {species}', 0, 0)
+        else:
+            pdf.cell(col_w, 6, '', 0, 0)
+        if case_number:
+            pdf.cell(col_w, 6, f'Case #: {case_number}', 0, 1)
+        else:
+            pdf.cell(col_w, 6, '', 0, 1)
+        pdf.ln(3)
 
         # Densitometry graph
         pdf.image(profile_tmp.name, x=10, w=190)
