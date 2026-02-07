@@ -14,12 +14,7 @@ import plotly.graph_objects as go
 from image_processor import GelImageProcessor, DensitometryAnalyzer
 from export_handler import AnalysisExporter
 
-# Try to import plotly_events for interactive boundary adjustment
-try:
-    from streamlit_plotly_events import plotly_events
-    PLOTLY_EVENTS_AVAILABLE = True
-except ImportError:
-    PLOTLY_EVENTS_AVAILABLE = False
+# Note: plotly_events import removed - use sliders instead
 
 # Page configuration
 st.set_page_config(
@@ -35,8 +30,6 @@ if 'processor' not in st.session_state:
     st.session_state.processor = None
 if 'current_tube' not in st.session_state:
     st.session_state.current_tube = 0
-if 'selected_boundary' not in st.session_state:
-    st.session_state.selected_boundary = None
 
 
 def load_image(uploaded_file):
@@ -108,7 +101,7 @@ with left_col:
 
         # Band definition sliders
         st.subheader("Band Limits")
-        st.caption("Adjust band boundaries using sliders →")
+        st.caption("Drag the sliders below to adjust band boundaries")
 
         profile = processor.get_densitometry_profile(tube_idx, auto_crop=False)
         profile_len = len(profile)
@@ -217,92 +210,18 @@ with right_col:
             fig.add_vline(x=right, line_dash="dash", line_color=color, line_width=2, opacity=0.7)
 
         fig.update_layout(
-            title='Densitometry Profile' + (' (Click boundaries to adjust)' if PLOTLY_EVENTS_AVAILABLE else ' (Use sliders to adjust)'),
+            title='Densitometry Profile',
             xaxis_title='Position (pixels)',
             yaxis_title='Optical Density',
             height=500,
             hovermode='x unified',
-            template='plotly_white',
-            dragmode=False if PLOTLY_EVENTS_AVAILABLE else 'zoom',  # Disable zoom when using clicks
-            xaxis=dict(fixedrange=False),
-            yaxis=dict(fixedrange=False),
+            template='plotly_white'
         )
 
-        # Interactive graph with boundary adjustment (if available)
-        if PLOTLY_EVENTS_AVAILABLE:
-            st.write("💡 *Click on a colored boundary line to adjust it*")
-            selected_points = plotly_events(
-                fig,
-                click_event=True,
-                hover_event=False,
-                select_event=False,
-                key="profile_graph"
-            )
-        else:
-            st.plotly_chart(fig, use_container_width=True)
-            selected_points = None
+        st.plotly_chart(fig, use_container_width=True)
 
-        # Map for quick reference
-        boundaries_current = {
-            'vldl_start': vldl_start, 'vldl_end': vldl_end,
-            'idl_start': idl_start, 'idl_end': idl_end,
-            'ldl_start': ldl_start, 'ldl_end': ldl_end,
-            'hdl_start': hdl_start, 'hdl_end': hdl_end,
-        }
-
-        # Handle clicks on boundaries for interactive adjustment (only if available)
-        if PLOTLY_EVENTS_AVAILABLE and selected_points and len(selected_points) > 0:
-            clicked_x = int(selected_points[0]['x'])
-
-            # Find which boundary was clicked (within ~30 pixels tolerance)
-            closest_boundary = None
-            closest_distance = 30
-
-            for boundary_name, boundary_value in boundaries_current.items():
-                distance = abs(clicked_x - boundary_value)
-                if distance < closest_distance:
-                    closest_boundary = boundary_name
-                    closest_distance = distance
-
-            if closest_boundary:
-                st.session_state.selected_boundary = closest_boundary
-
-        # Show adjustment controls if a boundary is selected (only if feature available)
-        if PLOTLY_EVENTS_AVAILABLE and st.session_state.selected_boundary:
-            boundary_name = st.session_state.selected_boundary
-            category_name, bound_type = boundary_name.split('_')
-            category = category_name.upper()
-
-            st.divider()
-            st.markdown(f"### 📍 Adjust {category} {bound_type.upper()} Boundary")
-
-            current_val = boundaries_current[boundary_name]
-            col1, col2 = st.columns([4, 1])
-
-            with col1:
-                new_pos = st.slider(
-                    f"Position",
-                    min_value=0,
-                    max_value=profile_len-1,
-                    value=current_val,
-                    key=f"edit_{boundary_name}"
-                )
-
-            with col2:
-                if st.button("✓ Apply", key="apply_boundary", help="Apply this boundary change"):
-                    # Store the new value in session state for the left column sliders to pick up
-                    st.session_state[f"boundary_{boundary_name}"] = new_pos
-                    st.session_state.selected_boundary = None
-                    st.rerun()
-
-            if st.button("✕ Cancel", key="cancel_boundary"):
-                st.session_state.selected_boundary = None
-                st.rerun()
-
-            st.divider()
-
-        # ---- GEL IMAGE (INTERACTIVE WITH DRAGGABLE BOUNDARIES) ----
-        st.subheader("Gel Tube Image (Click boundaries to adjust)")
+        # ---- GEL IMAGE ----
+        st.subheader("Gel Tube Image")
 
         try:
             tube_info = processor.tubes[tube_idx]
@@ -358,57 +277,16 @@ with right_col:
                                      annotation_text=f"{category} end", annotation_position="right")
 
             fig_gel.update_layout(
-                title=f'Tube {tube_idx+1} - Gel Image (Click boundaries to adjust)',
+                title=f'Tube {tube_idx+1} - Gel Image',
                 xaxis_title='Width (pixels)',
                 yaxis_title='Depth (trimmed 25%)',
                 height=350,
                 hovermode='closest',
                 template='plotly_white',
-                dragmode=False if PLOTLY_EVENTS_AVAILABLE else 'zoom',  # Disable zoom when using clicks
                 yaxis=dict(autorange='reversed'),  # Match image orientation
-                xaxis=dict(fixedrange=False),
             )
 
-            # Display gel image with interactive boundaries
-            if PLOTLY_EVENTS_AVAILABLE:
-                st.write("💡 *Click on a colored band line to adjust it*")
-                gel_clicks = plotly_events(
-                    fig_gel,
-                    click_event=True,
-                    hover_event=False,
-                    select_event=False,
-                    key="gel_image"
-                )
-
-                # Handle clicks on gel image boundaries
-                if gel_clicks and len(gel_clicks) > 0:
-                    clicked_y = int(gel_clicks[0]['y'])
-
-                    # Find which boundary was clicked
-                    boundaries_gel = {
-                        'vldl_start': vldl_start - trim_offset,
-                        'vldl_end': vldl_end - trim_offset,
-                        'idl_start': idl_start - trim_offset,
-                        'idl_end': idl_end - trim_offset,
-                        'ldl_start': ldl_start - trim_offset,
-                        'ldl_end': ldl_end - trim_offset,
-                        'hdl_start': hdl_start - trim_offset,
-                        'hdl_end': hdl_end - trim_offset,
-                    }
-
-                    closest_boundary = None
-                    closest_distance = 15
-
-                    for boundary_name, boundary_value in boundaries_gel.items():
-                        distance = abs(clicked_y - boundary_value)
-                        if distance < closest_distance:
-                            closest_boundary = boundary_name
-                            closest_distance = distance
-
-                    if closest_boundary:
-                        st.session_state.selected_boundary = closest_boundary
-            else:
-                st.plotly_chart(fig_gel, use_container_width=True)
+            st.plotly_chart(fig_gel, use_container_width=True)
 
         except Exception as e:
             st.warning(f"Could not display gel image: {str(e)}")
