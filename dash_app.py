@@ -19,7 +19,7 @@ from export_handler import AnalysisExporter
 
 # Initialize Dash app
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
-app.title = "Gel Densitometry Analysis"
+app.title = "CLIPR - Lipoprint Analysis Tool"
 
 # Color scheme
 COLORS = {
@@ -37,8 +37,10 @@ app.layout = dbc.Container([
     # Header
     dbc.Row([
         dbc.Col([
-            html.H1("🧬 Gel Electrophoresis Densitometry Analysis",
-                   className="mb-4 mt-4 text-center text-primary")
+            html.H1("CLIPR - Lipoprint Analysis Tool",
+                   className="mb-2 mt-4 text-center text-primary"),
+            html.H5("Hugues Beaufrère, DVM, PhD, DACZM",
+                   className="mb-4 text-center text-muted")
         ])
     ]),
 
