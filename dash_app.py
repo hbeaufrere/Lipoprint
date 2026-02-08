@@ -871,6 +871,11 @@ def update_summary_table(tubes_store, patient_store):
             'LDL %': f"{t['ldl_pct']:.1f}",
             'Total LDL %': f"{t['total_ldl_pct']:.1f}",
             'HDL %': f"{t['hdl_pct']:.1f}",
+            'VLDL-C (mg/dL)': f"{(t['vldl_pct'] / 100.0) * chol:.1f}" if has_chol else '',
+            'IDL-C (mg/dL)': f"{(t['idl_pct'] / 100.0) * chol:.1f}" if has_chol else '',
+            'LDL-C (mg/dL)': f"{(t['ldl_pct'] / 100.0) * chol:.1f}" if has_chol else '',
+            'Total LDL-C (mg/dL)': f"{(t['total_ldl_pct'] / 100.0) * chol:.1f}" if has_chol else '',
+            'HDL-C (mg/dL)': f"{(t['hdl_pct'] / 100.0) * chol:.1f}" if has_chol else '',
         }
         rows.append(row)
 
