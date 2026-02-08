@@ -383,13 +383,23 @@ app.layout = dbc.Container([
                     html.Label("Export:", className="fw-bold"),
                     dbc.Row([
                         dbc.Col([
-                            dcc.Download(id='download-pdf'),
-                            dbc.Button("📥 PDF Report", id='export-pdf-btn', color="primary", size="sm", className="w-100")
-                        ], className="mb-2"),
+                            html.Label("Tube for PDF:", className="small"),
+                            dcc.Dropdown(
+                                id='pdf-tube-selector',
+                                options=[{'label': f'Tube {i+1}', 'value': i} for i in range(12)],
+                                value=0,
+                                clearable=False,
+                                style={'font-size': '12px'}
+                            ),
+                        ], width=3),
                         dbc.Col([
-                            dbc.Button("📋 Copy Table", id='copy-table-btn', color="success", size="sm", className="w-100"),
+                            dcc.Download(id='download-pdf'),
+                            dbc.Button("PDF Report", id='export-pdf-btn', color="primary", size="sm", className="w-100 mt-4")
+                        ], width=3),
+                        dbc.Col([
+                            dbc.Button("Copy Table", id='copy-table-btn', color="success", size="sm", className="w-100 mt-4"),
                             html.Div(id='copy-feedback', style={'font-size': '11px', 'margin-top': '2px'})
-                        ], className="mb-2"),
+                        ], width=3),
                     ]),
 
                 ])
@@ -397,10 +407,26 @@ app.layout = dbc.Container([
         ], width=9),
     ]),
 
+    # SUMMARY TABLE SECTION
+    dbc.Row([
+        dbc.Col([
+            dbc.Card([
+                dbc.CardBody([
+                    html.H4("All Tubes Summary", className="card-title"),
+                    html.Div(id='summary-table', children=[
+                        html.P("Analyze tubes to populate the summary.", className="text-muted")
+                    ])
+                ])
+            ])
+        ])
+    ], className="mt-4"),
+
     # Hidden stores for state management
     dcc.Store(id='processor-store', storage_type='memory'),
     dcc.Store(id='analyzer-store', storage_type='memory'),
     dcc.Store(id='table-tsv-store', storage_type='memory'),
+    dcc.Store(id='all-tubes-store', data={}, storage_type='memory'),
+    dcc.Store(id='patient-info-store', data={}, storage_type='memory'),
 
 ], fluid=True, className="p-4")
 
@@ -425,7 +451,6 @@ def load_image(contents):
         decoded = base64.b64decode(content_string)
 
         # Create temporary file
-        import tempfile
         with tempfile.NamedTemporaryFile(suffix='.tif', delete=False) as tmp:
             tmp.write(decoded)
             tmp_path = tmp.name
@@ -548,12 +573,68 @@ def display_reference_tubes(processor_data, selected_tube):
         return html.Div(f"Error: {str(e)}", className="text-danger small")
 
 
+# --- Patient info save/load ---
+
+@callback(
+    Output('patient-info-store', 'data'),
+    [Input('pet-name-input', 'value'),
+     Input('owner-name-input', 'value'),
+     Input('species-input', 'value'),
+     Input('case-number-input', 'value'),
+     Input('cholesterol-input', 'value')],
+    [State('tube-selector', 'value'),
+     State('patient-info-store', 'data')],
+    prevent_initial_call=True
+)
+def save_patient_info(pet_name, owner_name, species, case_number, cholesterol,
+                      tube_idx, store):
+    """Save patient info fields to store for the current tube"""
+    if store is None:
+        store = {}
+    key = str(tube_idx) if tube_idx is not None else '0'
+    store[key] = {
+        'pet_name': pet_name or '',
+        'owner_name': owner_name or '',
+        'species': species or '',
+        'case_number': case_number or '',
+        'cholesterol': cholesterol,
+    }
+    return store
+
+
+@callback(
+    [Output('pet-name-input', 'value'),
+     Output('owner-name-input', 'value'),
+     Output('species-input', 'value'),
+     Output('case-number-input', 'value'),
+     Output('cholesterol-input', 'value')],
+    Input('tube-selector', 'value'),
+    State('patient-info-store', 'data'),
+    prevent_initial_call=True
+)
+def load_tube_info(tube_idx, store):
+    """Load patient info for the selected tube, or clear if not yet set"""
+    if store and str(tube_idx) in store:
+        info = store[str(tube_idx)]
+        return (
+            info.get('pet_name', ''),
+            info.get('owner_name', ''),
+            info.get('species', ''),
+            info.get('case_number', ''),
+            info.get('cholesterol'),
+        )
+    return '', '', '', '', None
+
+
+# --- Main analysis ---
+
 @callback(
     [Output('profile-graph', 'figure'),
      Output('gel-graph', 'figure'),
      Output('results-table', 'children'),
      Output('metrics-row', 'children'),
-     Output('table-tsv-store', 'data')],
+     Output('table-tsv-store', 'data'),
+     Output('all-tubes-store', 'data')],
     [Input('tube-selector', 'value'),
      Input('vldl-slider', 'value'),
      Input('idl-slider', 'value'),
@@ -561,13 +642,18 @@ def display_reference_tubes(processor_data, selected_tube):
      Input('hdl-slider', 'value'),
      Input('processor-store', 'data'),
      Input('cholesterol-input', 'value')],
+    [State('all-tubes-store', 'data')],
     prevent_initial_call=True
 )
-def update_analysis(tube_idx, vldl, idl, ldl, hdl, processor_data, cholesterol_value):
-    """Update all visualizations and results"""
+def update_analysis(tube_idx, vldl, idl, ldl, hdl, processor_data, cholesterol_value,
+                    tubes_store):
+    """Update all visualizations and results, save to all-tubes store"""
 
     if not processor_data:
-        return {}, {}, "Load an image to start", [], None
+        return {}, {}, "Load an image to start", [], None, tubes_store or {}
+
+    if tubes_store is None:
+        tubes_store = {}
 
     processor, analyzer, profile, background, bands = _reconstruct_analysis(
         processor_data, tube_idx, vldl, idl, ldl, hdl
@@ -617,7 +703,7 @@ def update_analysis(tube_idx, vldl, idl, ldl, hdl, processor_data, cholesterol_v
             hovertemplate=f'<b>{category}</b><br>%{{x}}<br>%{{y:.3f}}<extra></extra>'
         ))
 
-        # Boundary lines (draggable via shapes)
+        # Boundary lines
         fig_profile.add_vline(x=left_trim, line_dash="dash", line_color=color, line_width=2, opacity=0.7)
         fig_profile.add_vline(x=right, line_dash="dash", line_color=color, line_width=2, opacity=0.7)
 
@@ -633,13 +719,9 @@ def update_analysis(tube_idx, vldl, idl, ldl, hdl, processor_data, cholesterol_v
     # ---- Create Gel Image (Raw ROI) ----
     tube_info = processor.tubes[tube_idx]
     tube_region = tube_info['region']
-
-    # Display raw tube data (no enhancement, just transpose for horizontal view)
-    tube_display = np.rot90(tube_region)  # Rotate 90 degrees for horizontal display
+    tube_display = np.rot90(tube_region)
 
     fig_gel = go.Figure()
-
-    # Gel image heatmap
     fig_gel.add_trace(go.Heatmap(
         z=tube_display,
         colorscale='Gray',
@@ -674,13 +756,11 @@ def update_analysis(tube_idx, vldl, idl, ldl, hdl, processor_data, cholesterol_v
             'AUC': f"{auc:.2f}",
             'Percentage': f"{pct:.1f}%"
         }
-        # Add cholesterol column if value provided
         if cholesterol_value and cholesterol_value > 0:
             cholesterol_mg = (pct / 100.0) * cholesterol_value
             row['Cholesterol (mg/dL)'] = f"{cholesterol_mg:.1f}"
         results_data.append(row)
 
-        # Insert Total LDL row after LDL
         if band['category'] == 'LDL':
             total_row = {
                 'Lipoprotein': 'Total LDL (IDL+LDL)',
@@ -733,28 +813,100 @@ def update_analysis(tube_idx, vldl, idl, ldl, hdl, processor_data, cholesterol_v
             if band['category'] == 'LDL':
                 tsv_data += f"Total LDL (IDL+LDL)\t{total_ldl_auc:.2f}\t{total_ldl_pct:.1f}\n"
 
-    return fig_profile, fig_gel, table, metrics, tsv_data
+    # ---- Save to all-tubes store ----
+    tubes_store[str(tube_idx)] = {
+        'vldl_pct': float(percentages[0]),
+        'idl_pct': float(percentages[1]),
+        'ldl_pct': float(percentages[2]),
+        'hdl_pct': float(percentages[3]),
+        'total_ldl_pct': float(total_ldl_pct),
+        'vldl_auc': float(band_aucs[0]),
+        'idl_auc': float(band_aucs[1]),
+        'ldl_auc': float(band_aucs[2]),
+        'hdl_auc': float(band_aucs[3]),
+        'total_ldl_auc': float(total_ldl_auc),
+        'vldl': list(vldl),
+        'idl': list(idl),
+        'ldl': list(ldl),
+        'hdl': list(hdl),
+    }
 
+    return fig_profile, fig_gel, table, metrics, tsv_data, tubes_store
+
+
+# --- Summary table ---
+
+@callback(
+    Output('summary-table', 'children'),
+    [Input('all-tubes-store', 'data'),
+     Input('patient-info-store', 'data')]
+)
+def update_summary_table(tubes_store, patient_store):
+    """Build summary table from all analyzed tubes"""
+    if not tubes_store:
+        return html.P("Analyze tubes to populate the summary.", className="text-muted")
+
+    if patient_store is None:
+        patient_store = {}
+
+    rows = []
+    for idx in range(12):
+        key = str(idx)
+        if key not in tubes_store:
+            continue
+        t = tubes_store[key]
+        p = patient_store.get(key, {})
+        chol = p.get('cholesterol')
+        has_chol = chol and chol > 0
+
+        row = {
+            'Tube': idx + 1,
+            'Pet Name': p.get('pet_name', ''),
+            'Owner': p.get('owner_name', ''),
+            'Species': p.get('species', ''),
+            'Case #': p.get('case_number', ''),
+            'Chol (mg/dL)': f"{chol}" if has_chol else '',
+            'VLDL %': f"{t['vldl_pct']:.1f}",
+            'IDL %': f"{t['idl_pct']:.1f}",
+            'LDL %': f"{t['ldl_pct']:.1f}",
+            'Total LDL %': f"{t['total_ldl_pct']:.1f}",
+            'HDL %': f"{t['hdl_pct']:.1f}",
+        }
+        rows.append(row)
+
+    if not rows:
+        return html.P("Analyze tubes to populate the summary.", className="text-muted")
+
+    df = pd.DataFrame(rows)
+    return dbc.Table.from_dataframe(
+        df,
+        striped=True,
+        bordered=True,
+        hover=True,
+        className="table-sm",
+        style={'font-size': '12px'}
+    )
+
+
+# --- PDF export ---
 
 @callback(
     Output('download-pdf', 'data'),
     Input('export-pdf-btn', 'n_clicks'),
-    [State('tube-selector', 'value'),
+    [State('pdf-tube-selector', 'value'),
      State('processor-store', 'data'),
+     State('all-tubes-store', 'data'),
+     State('patient-info-store', 'data'),
      State('vldl-slider', 'value'),
      State('idl-slider', 'value'),
      State('ldl-slider', 'value'),
      State('hdl-slider', 'value'),
-     State('cholesterol-input', 'value'),
-     State('pet-name-input', 'value'),
-     State('owner-name-input', 'value'),
-     State('species-input', 'value'),
-     State('case-number-input', 'value')],
+     State('tube-selector', 'value')],
     prevent_initial_call=True
 )
-def export_pdf(n_clicks, tube_idx, processor_data, vldl, idl, ldl, hdl, cholesterol_value,
-               pet_name, owner_name, species, case_number):
-    """Export PDF report with graph, tube image, and results table"""
+def export_pdf(n_clicks, pdf_tube_idx, processor_data, tubes_store, patient_store,
+               vldl, idl, ldl, hdl, current_tube_idx):
+    """Export PDF report for the selected tube"""
     if not processor_data:
         return None
 
@@ -762,13 +914,34 @@ def export_pdf(n_clicks, tube_idx, processor_data, vldl, idl, ldl, hdl, choleste
         import matplotlib
         matplotlib.use('Agg')
         import matplotlib.pyplot as plt
-        import matplotlib.colors as mcolors
         from fpdf import FPDF
         from PIL import Image
         import os
 
+        # Determine band limits: use stored if available, else current sliders
+        key = str(pdf_tube_idx)
+        if tubes_store and key in tubes_store:
+            t = tubes_store[key]
+            use_vldl = t['vldl']
+            use_idl = t['idl']
+            use_ldl = t['ldl']
+            use_hdl = t['hdl']
+        else:
+            use_vldl = vldl
+            use_idl = idl
+            use_ldl = ldl
+            use_hdl = hdl
+
+        # Get patient info
+        p = (patient_store or {}).get(key, {})
+        pet_name = p.get('pet_name', '')
+        owner_name = p.get('owner_name', '')
+        species = p.get('species', '')
+        case_number = p.get('case_number', '')
+        cholesterol_value = p.get('cholesterol')
+
         processor, analyzer, profile, background, bands = _reconstruct_analysis(
-            processor_data, tube_idx, vldl, idl, ldl, hdl
+            processor_data, pdf_tube_idx, use_vldl, use_idl, use_ldl, use_hdl
         )
         band_aucs, percentages = analyzer.calculate_band_percentages()
 
@@ -799,7 +972,7 @@ def export_pdf(n_clicks, tube_idx, processor_data, vldl, idl, ldl, hdl, choleste
             ax.axvline(x=lt, color=color, linestyle='--', linewidth=1, alpha=0.7)
             ax.axvline(x=right, color=color, linestyle='--', linewidth=1, alpha=0.7)
 
-        ax.set_title(f'Tube {tube_idx+1} - Densitometry Profile')
+        ax.set_title(f'Tube {pdf_tube_idx+1} - Densitometry Profile')
         ax.set_xlabel('Position (pixels)')
         ax.set_ylabel('Optical Density')
         ax.legend(loc='upper left', fontsize=8, framealpha=0.9)
@@ -811,7 +984,7 @@ def export_pdf(n_clicks, tube_idx, processor_data, vldl, idl, ldl, hdl, choleste
         plt.close(fig)
 
         # --- Tube ROI image via PIL ---
-        tube_region = processor.tubes[tube_idx]['region']
+        tube_region = processor.tubes[pdf_tube_idx]['region']
         tube_display = np.rot90(tube_region)
         img_pil = Image.fromarray(tube_display.astype(np.uint8))
         gel_tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
@@ -835,28 +1008,28 @@ def export_pdf(n_clicks, tube_idx, processor_data, vldl, idl, ldl, hdl, choleste
         pdf.cell(0, 7, 'Hugues Beaufrere, DVM, PhD, DACZM', ln=True, align='C')
         pdf.ln(3)
         pdf.set_font('Helvetica', '', 9)
-        pdf.cell(0, 5, f'Date: {datetime.now().strftime("%Y-%m-%d %H:%M")}    |    Tube: {tube_idx + 1}', ln=True, align='C')
+        pdf.cell(0, 5, f'Date: {datetime.now().strftime("%Y-%m-%d %H:%M")}    |    Tube: {pdf_tube_idx + 1}', ln=True, align='C')
         pdf.ln(4)
 
         # Patient information
         pdf.set_font('Helvetica', '', 10)
-        col_w = 95
+        info_w = 95
         if pet_name:
-            pdf.cell(col_w, 6, f'Pet Name: {pet_name}', 0, 0)
+            pdf.cell(info_w, 6, f'Pet Name: {pet_name}', 0, 0)
         else:
-            pdf.cell(col_w, 6, '', 0, 0)
+            pdf.cell(info_w, 6, '', 0, 0)
         if owner_name:
-            pdf.cell(col_w, 6, f'Owner: {owner_name}', 0, 1)
+            pdf.cell(info_w, 6, f'Owner: {owner_name}', 0, 1)
         else:
-            pdf.cell(col_w, 6, '', 0, 1)
+            pdf.cell(info_w, 6, '', 0, 1)
         if species:
-            pdf.cell(col_w, 6, f'Species: {species}', 0, 0)
+            pdf.cell(info_w, 6, f'Species: {species}', 0, 0)
         else:
-            pdf.cell(col_w, 6, '', 0, 0)
+            pdf.cell(info_w, 6, '', 0, 0)
         if case_number:
-            pdf.cell(col_w, 6, f'Case #: {case_number}', 0, 1)
+            pdf.cell(info_w, 6, f'Case #: {case_number}', 0, 1)
         else:
-            pdf.cell(col_w, 6, '', 0, 1)
+            pdf.cell(info_w, 6, '', 0, 1)
         pdf.ln(3)
 
         # Densitometry graph
@@ -865,7 +1038,7 @@ def export_pdf(n_clicks, tube_idx, processor_data, vldl, idl, ldl, hdl, choleste
 
         # Tube image
         pdf.set_font('Helvetica', 'B', 12)
-        pdf.cell(0, 8, f'Tube {tube_idx+1} - ROI', ln=True)
+        pdf.cell(0, 8, f'Tube {pdf_tube_idx+1} - ROI', ln=True)
         pdf.image(gel_tmp.name, x=10, w=190)
         pdf.ln(5)
 
@@ -923,13 +1096,23 @@ def export_pdf(n_clicks, tube_idx, processor_data, vldl, idl, ldl, hdl, choleste
         os.unlink(gel_tmp.name)
 
         pdf_b64 = base64.b64encode(pdf_bytes).decode()
-        return dict(content=pdf_b64, filename=f'tube_{tube_idx+1}_report.pdf', base64=True)
+        return dict(content=pdf_b64, filename=f'tube_{pdf_tube_idx+1}_report.pdf', base64=True)
 
     except Exception as e:
         print(f"PDF export error: {e}")
         import traceback
         traceback.print_exc()
         return None
+
+
+# Sync PDF tube selector with main tube selector
+@callback(
+    Output('pdf-tube-selector', 'value'),
+    Input('tube-selector', 'value'),
+    prevent_initial_call=True
+)
+def sync_pdf_tube(tube_idx):
+    return tube_idx
 
 
 # Clientside callback for clipboard copy
@@ -944,7 +1127,7 @@ app.clientside_callback(
         }).catch(function(err) {
             console.error('Copy failed:', err);
         });
-        return '✓ Copied!';
+        return '\u2713 Copied!';
     }
     """,
     Output('copy-feedback', 'children'),
