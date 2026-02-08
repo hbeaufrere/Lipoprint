@@ -1186,13 +1186,6 @@ def export_labeled_image(n_clicks, processor_data, patient_store):
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         pil_img = Image.fromarray(img_rgb)
 
-        # Add space below image for labels
-        label_height = 60
-        new_img = Image.new('RGB', (pil_img.width, pil_img.height + label_height), (255, 255, 255))
-        new_img.paste(pil_img, (0, 0))
-
-        draw = ImageDraw.Draw(new_img)
-
         # Try to get a reasonable font
         try:
             font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 11)
@@ -1202,39 +1195,41 @@ def export_labeled_image(n_clicks, processor_data, patient_store):
         if patient_store is None:
             patient_store = {}
 
+        # Build labels first to calculate required height
         tubes_data = processor_data['tubes']
+        labels = []
+        for i, tube_data in enumerate(tubes_data):
+            p = patient_store.get(str(i), {})
+            case_num = p.get('case_number', '') or ''
+            labels.append((f"T{i + 1}", case_num))
+
+        # Measure max label width to determine if we need more space
+        line_h = 16
+        rows_needed = 2  # tube number + case number
+        label_height_needed = rows_needed * line_h + 10
+
+        # Resize canvas with enough room
+        new_img = Image.new('RGB', (pil_img.width, pil_img.height + label_height_needed), (255, 255, 255))
+        new_img.paste(pil_img, (0, 0))
+        draw = ImageDraw.Draw(new_img)
+
         for i, tube_data in enumerate(tubes_data):
             x_start, x_end = tube_data['x_range']
             center_x = (x_start + x_end) // 2
             label_y = pil_img.height + 4
 
-            # Get animal ID: use pet name, fall back to case #, then tube number
-            p = patient_store.get(str(i), {})
-            animal_id = p.get('pet_name', '') or p.get('case_number', '') or f'T{i + 1}'
+            tube_label, case_num = labels[i]
 
-            # Draw tube number
-            tube_label = f"T{i + 1}"
+            # Draw tube number centered on tube
             bbox = draw.textbbox((0, 0), tube_label, font=font)
             tw = bbox[2] - bbox[0]
             draw.text((center_x - tw // 2, label_y), tube_label, fill=(0, 0, 0), font=font)
 
-            # Draw animal ID below tube number
-            if animal_id != tube_label:
-                bbox2 = draw.textbbox((0, 0), animal_id, font=font)
+            # Draw case # below, horizontally (no truncation)
+            if case_num:
+                bbox2 = draw.textbbox((0, 0), case_num, font=font)
                 tw2 = bbox2[2] - bbox2[0]
-                # Truncate if too wide for tube width
-                tube_width = x_end - x_start
-                if tw2 > tube_width + 6:
-                    while len(animal_id) > 2:
-                        animal_id = animal_id[:-1]
-                        bbox2 = draw.textbbox((0, 0), animal_id + '.', font=font)
-                        tw2 = bbox2[2] - bbox2[0]
-                        if tw2 <= tube_width + 6:
-                            animal_id += '.'
-                            break
-                    bbox2 = draw.textbbox((0, 0), animal_id, font=font)
-                    tw2 = bbox2[2] - bbox2[0]
-                draw.text((center_x - tw2 // 2, label_y + 16), animal_id,
+                draw.text((center_x - tw2 // 2, label_y + line_h), case_num,
                           fill=(0, 100, 180), font=font)
 
         # Save to bytes
