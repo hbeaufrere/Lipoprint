@@ -708,20 +708,35 @@ def update_analysis(tube_idx, vldl, idl, ldl, hdl, processor_data, cholesterol_v
     # Background line
     fig_profile.add_hline(y=background, line_dash="dash", line_color="gray", name="Background")
 
-    # AUC areas with boundaries
+    # AUC areas with boundaries (match calculate_band_percentages: trim 25% left, fill above background)
     for band in bands:
         left = band['left']
         right = band['right']
         category = band['category']
         color = COLORS[category]
 
-        # AUC area
-        band_x = x[left:right+1]
-        band_y = profile[left:right+1]
+        # Apply same 25% trim as AUC calculation
+        trim_amount = int((right - left) * 0.25)
+        left_trimmed = left + trim_amount
 
+        # AUC area: fill only above background (matching actual calculation)
+        band_x = x[left_trimmed:right+1]
+        band_y = profile[left_trimmed:right+1]
+        band_y_clamped = np.maximum(band_y, background)
+
+        # Baseline at background level
         fig_profile.add_trace(go.Scatter(
-            x=band_x, y=band_y,
-            fill='tozeroy',
+            x=band_x, y=np.full_like(band_x, background, dtype=float),
+            mode='lines',
+            line=dict(color='rgba(0,0,0,0)', width=0),
+            showlegend=False,
+            hoverinfo='skip'
+        ))
+
+        # Fill from profile down to background
+        fig_profile.add_trace(go.Scatter(
+            x=band_x, y=band_y_clamped,
+            fill='tonexty',
             fillcolor=color,
             opacity=0.35,
             line=dict(color=color, width=2),
@@ -1000,9 +1015,13 @@ def export_pdf(n_clicks, pdf_tube_idx, processor_data, tubes_store, patient_stor
             right = band['right']
             cat = band['category']
             color = COLORS[cat]
-            band_x = x[left:right+1]
-            band_y = profile[left:right+1]
-            ax.fill_between(band_x, 0, band_y, color=color, alpha=0.7, label=cat)
+            # Apply same 25% trim as AUC calculation
+            trim_amount = int((right - left) * 0.25)
+            left_trimmed = left + trim_amount
+            band_x = x[left_trimmed:right+1]
+            band_y = profile[left_trimmed:right+1]
+            band_y_clamped = np.maximum(band_y, background)
+            ax.fill_between(band_x, background, band_y_clamped, color=color, alpha=0.7, label=cat)
             ax.axvline(x=left, color=color, linestyle='--', linewidth=1, alpha=0.9)
             ax.axvline(x=right, color=color, linestyle='--', linewidth=1, alpha=0.9)
 
