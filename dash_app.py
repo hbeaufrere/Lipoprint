@@ -578,13 +578,17 @@ def display_reference_tubes(processor_data, selected_tube):
                             'flex-shrink': '0',
                         }
                     ),
-                    html.Img(
-                        src=f'data:image/png;base64,{img_b64}',
-                        style={
-                            'width': '100%',
-                            'border': border_style,
-                            'border-radius': '2px',
-                        }
+                    html.Div(
+                        html.Img(
+                            src=f'data:image/png;base64,{img_b64}',
+                            style={
+                                'width': '100%',
+                                'display': 'block',
+                                'border': border_style,
+                                'border-radius': '2px',
+                            }
+                        ),
+                        style={'flex': '1', 'min-width': '0', 'overflow': 'hidden'}
                     ),
                 ], style={
                     'display': 'flex',
@@ -593,10 +597,11 @@ def display_reference_tubes(processor_data, selected_tube):
                     'padding': '2px',
                     'background-color': bg_color,
                     'border-radius': '4px',
+                    'overflow': 'hidden',
                 })
             )
 
-        return html.Div(tube_elements)
+        return html.Div(tube_elements, style={'max-width': '100%', 'overflow': 'hidden'})
     except Exception as e:
         return html.Div(f"Error: {str(e)}", className="text-danger small")
 
