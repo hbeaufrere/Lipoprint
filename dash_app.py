@@ -407,10 +407,6 @@ app.layout = dbc.Container([
                             dbc.Button("Copy Table", id='copy-table-btn', color="success", size="sm", className="w-100 mt-4"),
                             html.Div(id='copy-feedback', style={'font-size': '11px', 'margin-top': '2px'})
                         ], width=3),
-                        dbc.Col([
-                            dcc.Download(id='download-labeled-img'),
-                            dbc.Button("Labeled Image", id='export-labeled-img-btn', color="info", size="sm", className="w-100 mt-4")
-                        ], width=3),
                     ]),
 
                 ])
@@ -428,6 +424,9 @@ app.layout = dbc.Container([
                         dbc.Button("Copy Summary", id='copy-summary-btn', size="sm",
                                    color="secondary", className="ms-3"),
                         html.Span(id='copy-summary-feedback', className="ms-2 text-success"),
+                        dcc.Download(id='download-labeled-img'),
+                        dbc.Button("Labeled Image", id='export-labeled-img-btn', size="sm",
+                                   color="info", className="ms-3"),
                     ], className="mb-3"),
                     html.Div(id='summary-table', children=[
                         html.P("Analyze tubes to populate the summary.", className="text-muted")
