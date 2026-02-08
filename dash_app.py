@@ -703,23 +703,16 @@ def update_analysis(tube_idx, vldl, idl, ldl, hdl, processor_data, cholesterol_v
     # Background line
     fig_profile.add_hline(y=background, line_dash="dash", line_color="gray", name="Background")
 
-    # AUC areas with draggable boundaries
-    def trim_top_25(start, end):
-        band_height = end - start
-        trim = int(band_height * 0.25)
-        return start + trim
-
+    # AUC areas with boundaries
     for band in bands:
         left = band['left']
         right = band['right']
         category = band['category']
         color = COLORS[category]
 
-        left_trim = trim_top_25(left, right)
-
         # AUC area
-        band_x = x[left_trim:right+1]
-        band_y = profile[left_trim:right+1]
+        band_x = x[left:right+1]
+        band_y = profile[left:right+1]
 
         fig_profile.add_trace(go.Scatter(
             x=band_x, y=band_y,
