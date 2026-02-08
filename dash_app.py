@@ -1294,6 +1294,65 @@ app.clientside_callback(
 )
 
 
+# Restore per-tube cutoffs when switching tubes (or reset on new image)
+DEFAULTS = {
+    'vldl': [27, 48],
+    'idl': [48, 65],
+    'ldl': [68, 120],
+    'hdl': [260, 300],
+}
+
+@callback(
+    [Output('vldl-slider', 'value', allow_duplicate=True),
+     Output('vldl-min-input', 'value', allow_duplicate=True),
+     Output('vldl-max-input', 'value', allow_duplicate=True),
+     Output('idl-slider', 'value', allow_duplicate=True),
+     Output('idl-min-input', 'value', allow_duplicate=True),
+     Output('idl-max-input', 'value', allow_duplicate=True),
+     Output('ldl-slider', 'value', allow_duplicate=True),
+     Output('ldl-min-input', 'value', allow_duplicate=True),
+     Output('ldl-max-input', 'value', allow_duplicate=True),
+     Output('hdl-slider', 'value', allow_duplicate=True),
+     Output('hdl-min-input', 'value', allow_duplicate=True),
+     Output('hdl-max-input', 'value', allow_duplicate=True)],
+    [Input('tube-selector', 'value'),
+     Input('processor-store', 'data')],
+    State('all-tubes-store', 'data'),
+    prevent_initial_call=True
+)
+def restore_tube_cutoffs(tube_idx, processor_data, tubes_store):
+    """Restore saved cutoffs when switching tubes, or reset on new image."""
+    from dash import ctx
+
+    trigger = ctx.triggered[0]['prop_id'] if ctx.triggered else ''
+
+    # New image uploaded → reset to defaults
+    if 'processor-store' in trigger:
+        d = DEFAULTS
+        return (d['vldl'], d['vldl'][0], d['vldl'][1],
+                d['idl'], d['idl'][0], d['idl'][1],
+                d['ldl'], d['ldl'][0], d['ldl'][1],
+                d['hdl'], d['hdl'][0], d['hdl'][1])
+
+    # Tube changed → restore from store if available, else defaults
+    if tubes_store and str(tube_idx) in tubes_store:
+        t = tubes_store[str(tube_idx)]
+        vldl = t['vldl']
+        idl = t['idl']
+        ldl = t['ldl']
+        hdl = t['hdl']
+        return (vldl, vldl[0], vldl[1],
+                idl, idl[0], idl[1],
+                ldl, ldl[0], ldl[1],
+                hdl, hdl[0], hdl[1])
+
+    d = DEFAULTS
+    return (d['vldl'], d['vldl'][0], d['vldl'][1],
+            d['idl'], d['idl'][0], d['idl'][1],
+            d['ldl'], d['ldl'][0], d['ldl'][1],
+            d['hdl'], d['hdl'][0], d['hdl'][1])
+
+
 # Sync input fields with sliders for all bands
 for band_name in ['vldl', 'idl', 'ldl', 'hdl']:
     @callback(
