@@ -708,20 +708,16 @@ def update_analysis(tube_idx, vldl, idl, ldl, hdl, processor_data, cholesterol_v
     # Background line
     fig_profile.add_hline(y=background, line_dash="dash", line_color="gray", name="Background")
 
-    # AUC areas with boundaries (match calculate_band_percentages: trim 25% left, fill above background)
+    # AUC areas with boundaries (exact slider bounds = colored area = AUC calculation)
     for band in bands:
         left = band['left']
         right = band['right']
         category = band['category']
         color = COLORS[category]
 
-        # Apply same 25% trim as AUC calculation
-        trim_amount = int((right - left) * 0.25)
-        left_trimmed = left + trim_amount
-
-        # AUC area: fill only above background (matching actual calculation)
-        band_x = x[left_trimmed:right+1]
-        band_y = profile[left_trimmed:right+1]
+        # Use exact slider bounds — no trimming
+        band_x = x[left:right+1]
+        band_y = profile[left:right+1]
         band_y_clamped = np.maximum(band_y, background)
 
         # Baseline at background level
@@ -1015,11 +1011,9 @@ def export_pdf(n_clicks, pdf_tube_idx, processor_data, tubes_store, patient_stor
             right = band['right']
             cat = band['category']
             color = COLORS[cat]
-            # Apply same 25% trim as AUC calculation
-            trim_amount = int((right - left) * 0.25)
-            left_trimmed = left + trim_amount
-            band_x = x[left_trimmed:right+1]
-            band_y = profile[left_trimmed:right+1]
+            # Use exact slider bounds — no trimming
+            band_x = x[left:right+1]
+            band_y = profile[left:right+1]
             band_y_clamped = np.maximum(band_y, background)
             ax.fill_between(band_x, background, band_y_clamped, color=color, alpha=0.7, label=cat)
             ax.axvline(x=left, color=color, linestyle='--', linewidth=1, alpha=0.9)

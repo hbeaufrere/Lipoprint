@@ -313,11 +313,10 @@ class DensitometryAnalyzer:
             self.bands[band_index]['left'] = left_idx
             self.bands[band_index]['right'] = right_idx
 
-    def calculate_band_percentages(self, trim_ratio=0.25):
+    def calculate_band_percentages(self):
         """Calculate percentage of total AUC for each band.
 
-        Args:
-            trim_ratio: Fraction of band height to trim from the top (default: 0.25 = 25%)
+        Uses exact band boundaries as defined by the sliders/cutoffs.
         """
         processor = GelImageProcessor.__new__(GelImageProcessor)
 
@@ -327,11 +326,6 @@ class DensitometryAnalyzer:
         for band in self.bands:
             left = band['left']
             right = band['right']
-
-            # Apply trim to remove top fraction of band
-            if trim_ratio > 0:
-                trim_amount = int((right - left) * trim_ratio)
-                left = left + trim_amount
 
             auc = processor.calculate_band_auc(
                 self.profile,
