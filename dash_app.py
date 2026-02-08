@@ -989,9 +989,6 @@ def export_pdf(n_clicks, pdf_tube_idx, processor_data, tubes_store, patient_stor
         total_ldl_auc = band_aucs[idl_idx] + band_aucs[ldl_idx]
         total_ldl_pct = percentages[idl_idx] + percentages[ldl_idx]
 
-        def trim_top_25(start, end):
-            return start + int((end - start) * 0.25)
-
         # --- Densitometry profile chart via matplotlib ---
         x = np.arange(len(profile))
         fig, ax = plt.subplots(figsize=(8, 4))
@@ -1003,12 +1000,11 @@ def export_pdf(n_clicks, pdf_tube_idx, processor_data, tubes_store, patient_stor
             right = band['right']
             cat = band['category']
             color = COLORS[cat]
-            lt = trim_top_25(left, right)
-            band_x = x[lt:right+1]
-            band_y = profile[lt:right+1]
-            ax.fill_between(band_x, 0, band_y, color=color, alpha=0.35, label=cat)
-            ax.axvline(x=lt, color=color, linestyle='--', linewidth=1, alpha=0.7)
-            ax.axvline(x=right, color=color, linestyle='--', linewidth=1, alpha=0.7)
+            band_x = x[left:right+1]
+            band_y = profile[left:right+1]
+            ax.fill_between(band_x, 0, band_y, color=color, alpha=0.7, label=cat)
+            ax.axvline(x=left, color=color, linestyle='--', linewidth=1, alpha=0.9)
+            ax.axvline(x=right, color=color, linestyle='--', linewidth=1, alpha=0.9)
 
         ax.set_title(f'Tube {pdf_tube_idx+1} - Densitometry Profile')
         ax.set_xlabel('Position (pixels)')
@@ -1041,9 +1037,7 @@ def export_pdf(n_clicks, pdf_tube_idx, processor_data, tubes_store, patient_stor
 
         # Title
         pdf.set_font('Helvetica', 'B', 18)
-        pdf.cell(0, 10, 'CLIPR - Lipoprint Analysis Tool', ln=True, align='C')
-        pdf.set_font('Helvetica', '', 11)
-        pdf.cell(0, 7, 'Hugues Beaufrere, DVM, PhD, DACZM', ln=True, align='C')
+        pdf.cell(0, 10, 'HR-PAGE Lipoprotein Analysis (Lipoprint)', ln=True, align='C')
         pdf.ln(3)
         pdf.set_font('Helvetica', '', 9)
         pdf.cell(0, 5, f'Date: {datetime.now().strftime("%Y-%m-%d %H:%M")}    |    Tube: {pdf_tube_idx + 1}', ln=True, align='C')
