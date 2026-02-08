@@ -737,7 +737,7 @@ def update_analysis(tube_idx, vldl, idl, ldl, hdl, processor_data, cholesterol_v
         title=f'Tube {tube_idx+1} - Densitometry Profile',
         xaxis_title='Position (pixels)',
         yaxis_title='Optical Density',
-        hovermode='x unified',
+        hovermode='closest',
         template='plotly_white',
         height=500
     )
