@@ -16,6 +16,7 @@ import tempfile
 from pathlib import Path
 from datetime import datetime
 
+import cv2
 from image_processor import GelImageProcessor, DensitometryAnalyzer
 
 # Initialize Dash app
@@ -406,6 +407,10 @@ app.layout = dbc.Container([
                             dbc.Button("Copy Table", id='copy-table-btn', color="success", size="sm", className="w-100 mt-4"),
                             html.Div(id='copy-feedback', style={'font-size': '11px', 'margin-top': '2px'})
                         ], width=3),
+                        dbc.Col([
+                            dcc.Download(id='download-labeled-img'),
+                            dbc.Button("Labeled Image", id='export-labeled-img-btn', color="info", size="sm", className="w-100 mt-4")
+                        ], width=3),
                     ]),
 
                 ])
@@ -727,8 +732,8 @@ def update_analysis(tube_idx, vldl, idl, ldl, hdl, processor_data, cholesterol_v
             hovertemplate=f'<b>{category}</b><br>%{{x}}<br>%{{y:.3f}}<extra></extra>'
         ))
 
-        # Boundary lines
-        fig_profile.add_vline(x=left_trim, line_dash="dash", line_color=color, line_width=2, opacity=0.7)
+        # Boundary lines (at actual slider values)
+        fig_profile.add_vline(x=left, line_dash="dash", line_color=color, line_width=2, opacity=0.7)
         fig_profile.add_vline(x=right, line_dash="dash", line_color=color, line_width=2, opacity=0.7)
 
     fig_profile.update_layout(
@@ -1149,6 +1154,102 @@ def export_pdf(n_clicks, pdf_tube_idx, processor_data, tubes_store, patient_stor
 )
 def sync_pdf_tube(tube_idx):
     return tube_idx
+
+
+# --- Labeled image export ---
+
+@callback(
+    Output('download-labeled-img', 'data'),
+    Input('export-labeled-img-btn', 'n_clicks'),
+    [State('processor-store', 'data'),
+     State('patient-info-store', 'data')],
+    prevent_initial_call=True
+)
+def export_labeled_image(n_clicks, processor_data, patient_store):
+    """Export gel image with animal IDs labeled below each tube"""
+    if not processor_data:
+        return None
+
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+
+        # Load original image
+        img = cv2.imread(processor_data['image_path'])
+        if img is None:
+            return None
+
+        # Crop to top half (same as GelImageProcessor.load_image)
+        height = img.shape[0]
+        img = img[:height // 2, :]
+
+        # Convert BGR to RGB for PIL
+        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        pil_img = Image.fromarray(img_rgb)
+
+        # Add space below image for labels
+        label_height = 60
+        new_img = Image.new('RGB', (pil_img.width, pil_img.height + label_height), (255, 255, 255))
+        new_img.paste(pil_img, (0, 0))
+
+        draw = ImageDraw.Draw(new_img)
+
+        # Try to get a reasonable font
+        try:
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 11)
+        except (OSError, IOError):
+            font = ImageFont.load_default()
+
+        if patient_store is None:
+            patient_store = {}
+
+        tubes_data = processor_data['tubes']
+        for i, tube_data in enumerate(tubes_data):
+            x_start, x_end = tube_data['x_range']
+            center_x = (x_start + x_end) // 2
+            label_y = pil_img.height + 4
+
+            # Get animal ID: use pet name, fall back to case #, then tube number
+            p = patient_store.get(str(i), {})
+            animal_id = p.get('pet_name', '') or p.get('case_number', '') or f'T{i + 1}'
+
+            # Draw tube number
+            tube_label = f"T{i + 1}"
+            bbox = draw.textbbox((0, 0), tube_label, font=font)
+            tw = bbox[2] - bbox[0]
+            draw.text((center_x - tw // 2, label_y), tube_label, fill=(0, 0, 0), font=font)
+
+            # Draw animal ID below tube number
+            if animal_id != tube_label:
+                bbox2 = draw.textbbox((0, 0), animal_id, font=font)
+                tw2 = bbox2[2] - bbox2[0]
+                # Truncate if too wide for tube width
+                tube_width = x_end - x_start
+                if tw2 > tube_width + 6:
+                    while len(animal_id) > 2:
+                        animal_id = animal_id[:-1]
+                        bbox2 = draw.textbbox((0, 0), animal_id + '.', font=font)
+                        tw2 = bbox2[2] - bbox2[0]
+                        if tw2 <= tube_width + 6:
+                            animal_id += '.'
+                            break
+                    bbox2 = draw.textbbox((0, 0), animal_id, font=font)
+                    tw2 = bbox2[2] - bbox2[0]
+                draw.text((center_x - tw2 // 2, label_y + 16), animal_id,
+                          fill=(0, 100, 180), font=font)
+
+        # Save to bytes
+        buf = io.BytesIO()
+        new_img.save(buf, format='PNG')
+        buf.seek(0)
+
+        return dcc.send_bytes(
+            buf.getvalue(),
+            filename=f"CLIPR_labeled_gel_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+        )
+
+    except Exception as e:
+        print(f"Error exporting labeled image: {e}")
+        return None
 
 
 # Clientside callback for clipboard copy
