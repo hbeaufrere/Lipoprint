@@ -93,12 +93,17 @@ app.layout = dbc.Container([
                         id='upload-image',
                         children=html.Div([
                             'Drag and drop or ',
-                            html.A('select a gel image')
+                            html.A('select a gel image'),
+                            html.Br(),
+                            html.Small('TIFF, PNG, JPEG, BMP, WebP',
+                                       style={'color': '#888', 'fontSize': '11px'})
                         ]),
+                        accept='image/tiff,image/png,image/jpeg,image/bmp,image/webp,.tif,.tiff',
                         style={
                             'width': '100%',
-                            'height': '60px',
-                            'lineHeight': '60px',
+                            'height': '70px',
+                            'lineHeight': '30px',
+                            'paddingTop': '8px',
                             'borderWidth': '1px',
                             'borderStyle': 'dashed',
                             'borderRadius': '5px',
@@ -107,6 +112,7 @@ app.layout = dbc.Container([
                         },
                         multiple=False
                     ),
+                    html.Div(id='upload-filename', className="text-muted small mb-2"),
 
                     html.Hr(),
 
@@ -412,7 +418,12 @@ app.layout = dbc.Container([
         dbc.Col([
             dbc.Card([
                 dbc.CardBody([
-                    html.H4("All Tubes Summary", className="card-title"),
+                    html.Div([
+                        html.H4("All Tubes Summary", className="card-title d-inline"),
+                        dbc.Button("Copy Summary", id='copy-summary-btn', size="sm",
+                                   color="secondary", className="ms-3"),
+                        html.Span(id='copy-summary-feedback', className="ms-2 text-success"),
+                    ], className="mb-3"),
                     html.Div(id='summary-table', children=[
                         html.P("Analyze tubes to populate the summary.", className="text-muted")
                     ])
@@ -425,6 +436,7 @@ app.layout = dbc.Container([
     dcc.Store(id='processor-store', storage_type='memory'),
     dcc.Store(id='analyzer-store', storage_type='memory'),
     dcc.Store(id='table-tsv-store', storage_type='memory'),
+    dcc.Store(id='summary-tsv-store', storage_type='memory'),
     dcc.Store(id='all-tubes-store', data={}, storage_type='memory'),
     dcc.Store(id='patient-info-store', data={}, storage_type='memory'),
 
@@ -434,6 +446,18 @@ app.layout = dbc.Container([
 # ============================================================================
 # CALLBACKS
 # ============================================================================
+
+@callback(
+    Output('upload-filename', 'children'),
+    Input('upload-image', 'filename'),
+    prevent_initial_call=True
+)
+def show_filename(filename):
+    """Display the uploaded filename"""
+    if filename:
+        return f"Uploaded: {filename}"
+    return ""
+
 
 @callback(
     Output('processor-store', 'data'),
@@ -837,14 +861,15 @@ def update_analysis(tube_idx, vldl, idl, ldl, hdl, processor_data, cholesterol_v
 # --- Summary table ---
 
 @callback(
-    Output('summary-table', 'children'),
+    [Output('summary-table', 'children'),
+     Output('summary-tsv-store', 'data')],
     [Input('all-tubes-store', 'data'),
      Input('patient-info-store', 'data')]
 )
 def update_summary_table(tubes_store, patient_store):
     """Build summary table from all analyzed tubes"""
     if not tubes_store:
-        return html.P("Analyze tubes to populate the summary.", className="text-muted")
+        return html.P("Analyze tubes to populate the summary.", className="text-muted"), ''
 
     if patient_store is None:
         patient_store = {}
@@ -880,10 +905,15 @@ def update_summary_table(tubes_store, patient_store):
         rows.append(row)
 
     if not rows:
-        return html.P("Analyze tubes to populate the summary.", className="text-muted")
+        return html.P("Analyze tubes to populate the summary.", className="text-muted"), ''
 
     df = pd.DataFrame(rows)
-    return dbc.Table.from_dataframe(
+    # Build TSV string for clipboard
+    tsv = '\t'.join(df.columns) + '\n'
+    for _, r in df.iterrows():
+        tsv += '\t'.join(str(v) for v in r.values) + '\n'
+
+    table = dbc.Table.from_dataframe(
         df,
         striped=True,
         bordered=True,
@@ -891,6 +921,7 @@ def update_summary_table(tubes_store, patient_store):
         className="table-sm",
         style={'font-size': '12px'}
     )
+    return table, tsv
 
 
 # --- PDF export ---
@@ -1138,6 +1169,27 @@ app.clientside_callback(
     Output('copy-feedback', 'children'),
     Input('copy-table-btn', 'n_clicks'),
     State('table-tsv-store', 'data'),
+    prevent_initial_call=True
+)
+
+# Clientside callback for summary clipboard copy
+app.clientside_callback(
+    """
+    function(n_clicks, tsvData) {
+        if (!n_clicks || !tsvData) {
+            return '';
+        }
+        navigator.clipboard.writeText(tsvData).then(function() {
+            // success
+        }).catch(function(err) {
+            console.error('Copy failed:', err);
+        });
+        return '\u2713 Copied!';
+    }
+    """,
+    Output('copy-summary-feedback', 'children'),
+    Input('copy-summary-btn', 'n_clicks'),
+    State('summary-tsv-store', 'data'),
     prevent_initial_call=True
 )
 
