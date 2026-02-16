@@ -115,6 +115,9 @@ app.layout = dbc.Container([
                     ),
                     html.Div(id='upload-filename', className="text-muted small mb-2"),
 
+                    dbc.Button("Reset All", id='reset-btn', color="danger", size="sm",
+                               className="w-100 mb-2", outline=True),
+
                     html.Hr(),
 
                     # Tube selection
@@ -461,6 +464,39 @@ def show_filename(filename):
     if filename:
         return f"Uploaded: {filename}"
     return ""
+
+
+@callback(
+    [Output('processor-store', 'data', allow_duplicate=True),
+     Output('all-tubes-store', 'data', allow_duplicate=True),
+     Output('patient-info-store', 'data', allow_duplicate=True),
+     Output('table-tsv-store', 'data', allow_duplicate=True),
+     Output('summary-tsv-store', 'data', allow_duplicate=True),
+     Output('upload-filename', 'children', allow_duplicate=True),
+     Output('tube-selector', 'value', allow_duplicate=True),
+     Output('profile-graph', 'figure', allow_duplicate=True),
+     Output('gel-graph', 'figure', allow_duplicate=True),
+     Output('results-table', 'children', allow_duplicate=True),
+     Output('metrics-row', 'children', allow_duplicate=True),
+     Output('summary-table', 'children', allow_duplicate=True),
+     Output('pet-name-input', 'value', allow_duplicate=True),
+     Output('owner-name-input', 'value', allow_duplicate=True),
+     Output('species-input', 'value', allow_duplicate=True),
+     Output('case-number-input', 'value', allow_duplicate=True),
+     Output('cholesterol-input', 'value', allow_duplicate=True)],
+    Input('reset-btn', 'n_clicks'),
+    prevent_initial_call=True
+)
+def reset_all(n_clicks):
+    """Reset everything to initial state."""
+    empty_fig = go.Figure()
+    empty_fig.update_layout(template='plotly_white')
+    return (None, {}, {}, None, '',
+            '', 0,
+            empty_fig, empty_fig,
+            "Load an image to start", [],
+            html.P("Analyze tubes to populate the summary.", className="text-muted"),
+            '', '', '', '', None)
 
 
 @callback(
